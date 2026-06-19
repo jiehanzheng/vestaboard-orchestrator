@@ -1,0 +1,9 @@
+services:
+  vestaboard-orchestrator:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ${CODEX_HOST_DIR:-${HOME}/.codex}:/home/node/.codex

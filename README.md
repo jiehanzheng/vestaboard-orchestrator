@@ -16,6 +16,22 @@ pnpm once
 pnpm test
 ```
 
+## Docker
+
+Create a local `.env` from the example:
+
+```sh
+cp .env.example .env
+```
+
+Set `VESTABOARD_TOKEN` in `.env`. By default, Compose mounts `${HOME}/.codex` into `/home/node/.codex` so `codex app-server` can reuse persisted auth. If your Codex config lives elsewhere, set `CODEX_HOST_DIR` in `.env`.
+
+Run:
+
+```sh
+docker compose up --build
+```
+
 ## Configuration
 
 | Variable | Default | Description |
