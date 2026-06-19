@@ -26,8 +26,8 @@ const plugins = [
     priority: process.env.CODEX_QUOTA_PRIORITY ?? "normal",
     errorPriority: process.env.CODEX_QUOTA_ERROR_PRIORITY ?? "low",
     timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
-    autoStartWindow5h: envFlag("auto_start_window_5h"),
-    autoStartWindowWk: envFlag("auto_start_window_wk"),
+    autoStartWindow5h: envFlag(process.env.AUTO_START_WINDOW_5H),
+    autoStartWindowWk: envFlag(process.env.AUTO_START_WINDOW_WK),
     takeDemoMode: () => demoSignals.take()
   })
 ];
@@ -59,7 +59,6 @@ async function runWithDemoSignals(): Promise<void> {
   });
 }
 
-function envFlag(name: string): boolean {
-  const value = process.env[name] ?? process.env[name.toUpperCase()];
+function envFlag(value: string | undefined): boolean {
   return value === "1" || value?.toLowerCase() === "true";
 }
