@@ -389,7 +389,7 @@ test("auto-start sidecar starts read-only threads without cwd", async () => {
     now: new Date("2026-06-19T00:00:00-07:00")
   });
 
-  assert.equal(threadStartParams?.sandbox, "readOnly");
+  assert.equal(threadStartParams?.sandbox, "read-only");
   assert.equal(Object.hasOwn(threadStartParams ?? {}, "cwd"), false);
 });
 

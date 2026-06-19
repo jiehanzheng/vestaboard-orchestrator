@@ -188,7 +188,7 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
   const thread = await client.request<ThreadStartResult>("thread/start", {
     model: selection.model,
     approvalPolicy: "never",
-    sandbox: "readOnly",
+    sandbox: "read-only",
     baseInstructions: AUTO_START_BASE_INSTRUCTIONS,
     ephemeral: true,
     threadSource: "user"
