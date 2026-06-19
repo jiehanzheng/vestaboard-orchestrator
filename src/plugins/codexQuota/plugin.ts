@@ -17,7 +17,7 @@ import {
   ThirdRowMessageStack
 } from "./pluginState.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
-import type { CodexQuotaPluginOptions, Logger, QuotaPoller } from "./types.js";
+import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot } from "./types.js";
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -43,7 +43,12 @@ export class CodexQuotaPlugin implements Plugin {
 
     try {
       const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
-      const { snapshot: freshQuota, thirdRowMessage, sidecarError } = normalizeQuotaRead(quotaRead);
+      const {
+        snapshot: freshQuota,
+        thirdRowMessage,
+        sidecarError,
+        rateLimitResetCreditsAvailableCount
+      } = normalizeQuotaRead(quotaRead);
       const missingWindows = missingQuotaWindows(freshQuota);
       this.quotaCache.update(freshQuota);
       const displayQuota = this.quotaCache.merge(freshQuota);
@@ -53,7 +58,8 @@ export class CodexQuotaPlugin implements Plugin {
         logAutoStartFailure(this.options.logger, sidecarError);
       }
 
-      const statusRow = this.thirdRowMessages.top(now);
+      const statusRow = this.thirdRowMessages.top(now)
+        ?? resetAvailableStatus(freshQuota, rateLimitResetCreditsAvailableCount);
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
         now,
@@ -146,4 +152,12 @@ export function createCodexQuotaPlugin({
 
 function statusExpiration(now: Date): Date {
   return new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS);
+}
+
+function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {
+  if ((availableCount ?? 0) <= 0 || !snapshot.weekly) {
+    return undefined;
+  }
+
+  return snapshot.weekly.remainingRatio <= 0 ? "reset available" : undefined;
 }

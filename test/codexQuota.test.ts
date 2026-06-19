@@ -447,6 +447,36 @@ test("codex plugin keeps fresh quota display when auto-start sidecar fails", asy
   });
 });
 
+test("codex plugin shows reset available when weekly quota is exhausted and reset credit exists", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    snapshot: {
+      fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    rateLimitResetCreditsAvailableCount: 1
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "high");
+  assert.equal(update.message.text.split("\n")[2], "RESET AVAILABLE");
+});
+
+test("codex plugin does not show reset available when weekly quota remains", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    snapshot: {
+      fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.01, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    rateLimitResetCreditsAvailableCount: 1
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "normal");
+  assert.equal(update.message.text.split("\n")[2], "0244♥06/24♥1419");
+});
+
 test("codex plugin returns low-priority error message when quota read fails", async () => {
   const warnings: unknown[][] = [];
   const plugin = new CodexQuotaPlugin(async () => {
