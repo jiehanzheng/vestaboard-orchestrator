@@ -49,8 +49,8 @@ docker compose up --build
 | `CODEX_QUOTA_ERROR_PRIORITY` | `low` | Priority for the Codex quota error message. |
 | `CODEX_QUOTA_TIME_ZONE` | local process timezone | Time zone used for reset labels. |
 | `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | `5` | How long to pause normal polling after a signal-triggered demo render. |
-| `AUTO_START_WINDOW_5H` | `false` | When enabled, sends one minimal Codex prompt if the 5H quota window is still completely unused at 100%. |
-| `AUTO_START_WINDOW_WK` | `false` | When enabled, sends one minimal Codex prompt if the weekly quota window is still completely unused at 100%. |
+| `CODEX_AUTO_START_WINDOW_5H` | `false` | When enabled, sends one minimal Codex prompt if the 5H quota window is still completely unused at 100%. |
+| `CODEX_AUTO_START_WINDOW_WK` | `false` | When enabled, sends one minimal Codex prompt if the weekly quota window is still completely unused at 100%. |
 
 The main loop is serial: it runs one orchestrator tick, waits `ORCHESTRATOR_INTERVAL_MINUTES` after that tick completes, then starts the next tick. It does not use `setInterval`, so a slow plugin cannot cause overlapping or immediate follow-up polls.
 

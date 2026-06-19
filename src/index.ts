@@ -26,8 +26,8 @@ const plugins = [
     priority: process.env.CODEX_QUOTA_PRIORITY ?? "normal",
     errorPriority: process.env.CODEX_QUOTA_ERROR_PRIORITY ?? "low",
     timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
-    autoStartWindow5h: envFlag(process.env.AUTO_START_WINDOW_5H),
-    autoStartWindowWk: envFlag(process.env.AUTO_START_WINDOW_WK),
+    autoStartWindow5h: envFlag(process.env.CODEX_AUTO_START_WINDOW_5H),
+    autoStartWindowWk: envFlag(process.env.CODEX_AUTO_START_WINDOW_WK),
     takeDemoMode: () => demoSignals.take(),
     restoreDemoMode: (demo) => demoSignals.restore(demo)
   })
