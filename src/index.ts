@@ -13,7 +13,6 @@ const demoSignals = new DemoSignalController();
 
 const vestaboard = createVestaboardClient({
   dryRun,
-  mode: process.env.VESTABOARD_MODE === "local" ? "local" : "cloud",
   token: process.env.VESTABOARD_TOKEN,
   localApiKey: process.env.VESTABOARD_LOCAL_API_KEY,
   cloudUrl: process.env.VESTABOARD_CLOUD_URL,
