@@ -122,6 +122,20 @@ test("renders full quota as 100 while preserving row width", () => {
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 27, 36, 36]);
 });
 
+test("renders single-digit percentages without a leading zero while preserving row width", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 0.09, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00"), showPacing: false }
+  );
+
+  assert.equal(message.text.split("\n")[0], "5HG          9%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 54]);
+  assert.equal(message.characters?.every((row) => row.length === 15), true);
+});
+
 test("does not render reset time for unused quota windows", () => {
   const message = formatQuota(
     {
