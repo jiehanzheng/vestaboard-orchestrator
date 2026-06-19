@@ -2,7 +2,7 @@ import type { CodexQuotaDemoMode, CodexQuotaDemoState } from "./plugins/codexQuo
 
 export class DemoSignalController {
   private pending = false;
-  private demoState: CodexQuotaDemoState = { pctDrops: 0, blockDrops: 0 };
+  private demoState: CodexQuotaDemoState = { pctDrops: 0, forceAutoStart: false };
   private pauseAfterRun = false;
   private wake: (() => void) | undefined;
   private readonly handlers = new Map<NodeJS.Signals, NodeJS.SignalsListener>();
@@ -13,19 +13,19 @@ export class DemoSignalController {
     }
 
     this.addHandler("SIGHUP", "drop-1-pct", logger);
-    this.addHandler("SIGUSR2", "drop-1-color-block", logger);
+    this.addHandler("SIGUSR2", "force-auto-start", logger);
   }
 
   queue(mode: CodexQuotaDemoMode, logger: Pick<Console, "info"> = console): void {
     if (mode === "drop-1-pct") {
       this.demoState.pctDrops += 1;
     } else {
-      this.demoState.blockDrops += 1;
+      this.demoState.forceAutoStart = true;
     }
 
     this.pending = true;
     logger.info(
-      `Queued Codex quota demo mode: ${mode}; pctDrops=${this.demoState.pctDrops}, blockDrops=${this.demoState.blockDrops}`
+      `Queued Codex quota demo mode: ${mode}; pctDrops=${this.demoState.pctDrops}, forceAutoStart=${this.demoState.forceAutoStart}`
     );
     this.wake?.();
   }
@@ -44,7 +44,19 @@ export class DemoSignalController {
 
     this.pending = false;
     this.pauseAfterRun = true;
-    return { ...this.demoState };
+    const demoState = { ...this.demoState };
+    if (!demoState.forceAutoStart) {
+      delete demoState.forceAutoStart;
+    }
+    this.demoState.forceAutoStart = false;
+    return demoState;
+  }
+
+  restore(demoState: CodexQuotaDemoState): void {
+    this.demoState.pctDrops = Math.max(this.demoState.pctDrops, demoState.pctDrops);
+    this.demoState.forceAutoStart = this.demoState.forceAutoStart || demoState.forceAutoStart === true;
+    this.pending = true;
+    this.pauseAfterRun = true;
   }
 
   takePauseAfterRun(): boolean {

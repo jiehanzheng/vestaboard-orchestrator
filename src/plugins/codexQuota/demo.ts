@@ -1,13 +1,11 @@
-import type { QuotaSnapshot, QuotaWindow } from "./index.js";
+import type { QuotaSnapshot, QuotaWindow } from "./types.js";
 
-export type CodexQuotaDemoMode = "drop-1-pct" | "drop-1-color-block";
+export type CodexQuotaDemoMode = "drop-1-pct" | "force-auto-start";
 
 export interface CodexQuotaDemoState {
   pctDrops: number;
-  blockDrops: number;
+  forceAutoStart?: boolean;
 }
-
-const BAR_WIDTH = 10;
 
 export function applyCodexQuotaDemo(snapshot: QuotaSnapshot, demo: CodexQuotaDemoState | undefined): QuotaSnapshot {
   if (!demo || !snapshot.fiveHour) {
@@ -24,13 +22,7 @@ export function applyCodexQuotaDemo(snapshot: QuotaSnapshot, demo: CodexQuotaDem
 }
 
 function applyDrops(window: QuotaWindow, demo: CodexQuotaDemoState): number {
-  const afterPctDrop = clamp(window.remainingRatio - Math.max(0, demo.pctDrops) * 0.01);
-  if (demo.blockDrops <= 0) {
-    return afterPctDrop;
-  }
-
-  const currentBlocks = Math.round(afterPctDrop * BAR_WIDTH);
-  return Math.max(0, currentBlocks - Math.max(0, demo.blockDrops)) / BAR_WIDTH;
+  return clamp(window.remainingRatio - Math.max(0, demo.pctDrops) * 0.01);
 }
 
 function clamp(value: number): number {
