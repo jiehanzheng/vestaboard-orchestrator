@@ -194,7 +194,7 @@ test("codex plugin renders cached quota ingredients when a later quota read fail
   let fail = false;
   const plugin = new CodexQuotaPlugin(async () => {
     if (fail) {
-      throw new Error("Codex app-server timed out after 10000ms.");
+      throw new Error("Codex app-server timed out after 30000ms.");
     }
 
     return {

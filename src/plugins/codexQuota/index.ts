@@ -46,7 +46,7 @@ const BLUE = 67;
 const HEART = 62;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
-const APP_SERVER_TIMEOUT_MS = 10_000;
+const APP_SERVER_TIMEOUT_MS = 30_000;
 const FIVE_HOUR_MINS = 300;
 const WEEKLY_MINS = 10_080;
 
