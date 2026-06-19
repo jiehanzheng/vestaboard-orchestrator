@@ -1,6 +1,6 @@
-# Vestaboard Orchestrator
+# [Vestaboard](https://web.vestaboard.com/referral?vbref=NZJHOT) Orchestrator
 
-A small TypeScript service that polls local plugins, picks the highest-priority message, and sends it to Vestaboard. Its first plugin turns Codex quota into a glanceable Vestaboard status board.
+A small TypeScript service for [Vestaboard](https://web.vestaboard.com/referral?vbref=NZJHOT), a connected split-flap-style display for showing short messages, status, and ambient information, that polls local plugins, picks the highest-priority message, and sends it to the board (referral link).
 
 ![Codex quota pacing hidden on a Vestaboard compose screen](docs/images/codex-pacing-off.png)
 
