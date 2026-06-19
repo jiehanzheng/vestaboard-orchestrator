@@ -1,7 +1,8 @@
-import type { CodexQuotaDemoMode } from "./plugins/codexQuota/demo.js";
+import type { CodexQuotaDemoMode, CodexQuotaDemoState } from "./plugins/codexQuota/demo.js";
 
 export class DemoSignalController {
-  private pendingMode: CodexQuotaDemoMode | undefined;
+  private pending = false;
+  private demoState: CodexQuotaDemoState = { pctDrops: 0, blockDrops: 0 };
   private pauseAfterRun = false;
   private wake: (() => void) | undefined;
   private readonly handlers = new Map<NodeJS.Signals, NodeJS.SignalsListener>();
@@ -16,8 +17,16 @@ export class DemoSignalController {
   }
 
   queue(mode: CodexQuotaDemoMode, logger: Pick<Console, "info"> = console): void {
-    this.pendingMode = mode;
-    logger.info(`Queued Codex quota demo mode: ${mode}`);
+    if (mode === "drop-1-pct") {
+      this.demoState.pctDrops += 1;
+    } else {
+      this.demoState.blockDrops += 1;
+    }
+
+    this.pending = true;
+    logger.info(
+      `Queued Codex quota demo mode: ${mode}; pctDrops=${this.demoState.pctDrops}, blockDrops=${this.demoState.blockDrops}`
+    );
     this.wake?.();
   }
 
@@ -28,13 +37,14 @@ export class DemoSignalController {
     this.handlers.clear();
   }
 
-  take(): CodexQuotaDemoMode | undefined {
-    const mode = this.pendingMode;
-    this.pendingMode = undefined;
-    if (mode) {
-      this.pauseAfterRun = true;
+  take(): CodexQuotaDemoState | undefined {
+    if (!this.pending) {
+      return undefined;
     }
-    return mode;
+
+    this.pending = false;
+    this.pauseAfterRun = true;
+    return { ...this.demoState };
   }
 
   takePauseAfterRun(): boolean {
@@ -44,7 +54,7 @@ export class DemoSignalController {
   }
 
   sleep(ms: number): Promise<void> {
-    if (this.pendingMode) {
+    if (this.pending) {
       return Promise.resolve();
     }
 

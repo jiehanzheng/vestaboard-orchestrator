@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
 import type { Plugin, PluginUpdate, Priority, VestaboardMessage } from "../../orchestrator.js";
-import { applyCodexQuotaDemo, type CodexQuotaDemoMode } from "./demo.js";
+import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -56,7 +56,7 @@ export class CodexQuotaPlugin implements Plugin {
       priority: Priority;
       errorPriority: Priority;
       timeZone?: string;
-      takeDemoMode?: () => CodexQuotaDemoMode | undefined;
+      takeDemoMode?: () => CodexQuotaDemoState | undefined;
     }
   ) {}
 
@@ -87,7 +87,7 @@ export function createCodexQuotaPlugin({
   priority?: Priority;
   errorPriority?: Priority;
   timeZone?: string;
-  takeDemoMode?: () => CodexQuotaDemoMode | undefined;
+  takeDemoMode?: () => CodexQuotaDemoState | undefined;
 } = {}): CodexQuotaPlugin {
   return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode });
 }

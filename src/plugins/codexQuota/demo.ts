@@ -2,10 +2,15 @@ import type { QuotaSnapshot, QuotaWindow } from "./index.js";
 
 export type CodexQuotaDemoMode = "drop-1-pct" | "drop-1-color-block";
 
+export interface CodexQuotaDemoState {
+  pctDrops: number;
+  blockDrops: number;
+}
+
 const BAR_WIDTH = 10;
 
-export function applyCodexQuotaDemo(snapshot: QuotaSnapshot, mode: CodexQuotaDemoMode | undefined): QuotaSnapshot {
-  if (!mode || !snapshot.fiveHour) {
+export function applyCodexQuotaDemo(snapshot: QuotaSnapshot, demo: CodexQuotaDemoState | undefined): QuotaSnapshot {
+  if (!demo || !snapshot.fiveHour) {
     return snapshot;
   }
 
@@ -13,21 +18,19 @@ export function applyCodexQuotaDemo(snapshot: QuotaSnapshot, mode: CodexQuotaDem
     ...snapshot,
     fiveHour: {
       ...snapshot.fiveHour,
-      remainingRatio:
-        mode === "drop-1-pct"
-          ? dropOnePercent(snapshot.fiveHour)
-          : dropOneColorBlock(snapshot.fiveHour)
+      remainingRatio: applyDrops(snapshot.fiveHour, demo)
     }
   };
 }
 
-function dropOnePercent(window: QuotaWindow): number {
-  return clamp(window.remainingRatio - 0.01);
-}
+function applyDrops(window: QuotaWindow, demo: CodexQuotaDemoState): number {
+  const afterPctDrop = clamp(window.remainingRatio - Math.max(0, demo.pctDrops) * 0.01);
+  if (demo.blockDrops <= 0) {
+    return afterPctDrop;
+  }
 
-function dropOneColorBlock(window: QuotaWindow): number {
-  const currentBlocks = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
-  return Math.max(0, currentBlocks - 1) / BAR_WIDTH;
+  const currentBlocks = Math.round(afterPctDrop * BAR_WIDTH);
+  return Math.max(0, currentBlocks - Math.max(0, demo.blockDrops)) / BAR_WIDTH;
 }
 
 function clamp(value: number): number {

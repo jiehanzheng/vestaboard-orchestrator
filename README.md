@@ -89,4 +89,6 @@ kill -HUP <pid>   # drop-1-pct: reduce 5H remaining quota by one percentage poin
 kill -USR2 <pid>  # drop-1-color-block: reduce 5H remaining quota by one rendered block
 ```
 
+Signals are cumulative for the running process. Two `SIGHUP`s render a two-point drop, and later demo signals continue from the accumulated demo offset.
+
 The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`.
