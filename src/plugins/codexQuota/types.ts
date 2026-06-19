@@ -34,4 +34,5 @@ export interface CodexQuotaPluginOptions {
   timeZone?: string;
   autoStartWindow5h?: boolean;
   autoStartWindowWk?: boolean;
+  showPacing?: boolean;
 }

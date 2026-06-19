@@ -32,6 +32,7 @@ export class CodexQuotaPlugin implements Plugin {
       priority: Priority;
       errorPriority: Priority;
       timeZone?: string;
+      showPacing?: boolean;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
       restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
       logger?: Logger;
@@ -65,6 +66,7 @@ export class CodexQuotaPlugin implements Plugin {
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
         now,
+        showPacing: this.options.showPacing,
         statusRow,
         staleRows
       });
@@ -94,6 +96,7 @@ export class CodexQuotaPlugin implements Plugin {
       ? formatQuota(cachedQuota, {
           timeZone: this.options.timeZone,
           now,
+          showPacing: this.options.showPacing,
           statusRow,
           staleRows: cachedRowsPresentIn(cachedQuota)
         })
@@ -131,6 +134,7 @@ export function createCodexQuotaPlugin({
   priority = "normal",
   errorPriority = "low",
   timeZone,
+  showPacing = true,
   autoStartWindow5h = false,
   autoStartWindowWk = false,
   takeDemoMode,
@@ -149,7 +153,7 @@ export function createCodexQuotaPlugin({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
       });
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, restoreDemoMode, logger, now });
+  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, takeDemoMode, restoreDemoMode, logger, now });
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {

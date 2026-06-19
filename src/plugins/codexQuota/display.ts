@@ -34,13 +34,14 @@ const PUNCTUATION_CODES: Record<string, number> = {
 
 export function formatQuota(
   snapshot: QuotaSnapshot,
-  options: { timeZone?: string; now?: Date; statusRow?: string; staleRows?: QuotaRowName[] } | string = {}
+  options: { timeZone?: string; now?: Date; statusRow?: string; staleRows?: QuotaRowName[]; showPacing?: boolean } | string = {}
 ): VestaboardMessage {
   const timeZone = typeof options === "string" ? options : options.timeZone;
   const now = typeof options === "string" ? new Date() : (options.now ?? new Date());
   const staleRows = typeof options === "string" ? [] : (options.staleRows ?? []);
-  const fiveHour = quotaLine("5H", snapshot.fiveHour, now, staleRows.includes("5H"));
-  const weekly = quotaLine("WK", snapshot.weekly, now, staleRows.includes("WK"));
+  const showPacing = typeof options === "string" ? true : (options.showPacing ?? true);
+  const fiveHour = quotaLine("5H", snapshot.fiveHour, now, staleRows.includes("5H"), showPacing);
+  const weekly = quotaLine("WK", snapshot.weekly, now, staleRows.includes("WK"), showPacing);
   const reset = typeof options === "string" || !options.statusRow
     ? resetLine(snapshot.fiveHour, snapshot.weekly, timeZone)
     : statusLine(options.statusRow);
@@ -64,19 +65,19 @@ export function sanitizeDisplayText(message: string): string {
   return sanitizeError(message);
 }
 
-function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Date, stale = false): { text: string; characters: number[] } {
+function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Date, stale = false, showPacing = true): { text: string; characters: number[] } {
   if (!window) {
     const text = `${prefix}${" ".repeat(BAR_WIDTH)}--%`;
     return { text, characters: encodeRow(text) };
   }
 
   const quotaBlocks = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
-  const timeBlocks = Math.round(timeRemainingRatio(window, now) * BAR_WIDTH);
-  const greenBlocks = Math.min(quotaBlocks, timeBlocks);
-  const redBlocks = Math.max(0, timeBlocks - quotaBlocks);
-  const blueBlocks = Math.max(0, quotaBlocks - timeBlocks);
+  const timeBlocks = showPacing ? Math.round(timeRemainingRatio(window, now) * BAR_WIDTH) : quotaBlocks;
+  const greenBlocks = showPacing ? Math.min(quotaBlocks, timeBlocks) : quotaBlocks;
+  const redBlocks = showPacing ? Math.max(0, timeBlocks - quotaBlocks) : 0;
+  const blueBlocks = showPacing ? Math.max(0, quotaBlocks - timeBlocks) : 0;
   const availableBlankBlocks = BAR_WIDTH - greenBlocks - redBlocks - blueBlocks;
-  const staleBlocks = stale && availableBlankBlocks > 0 ? 1 : 0;
+  const staleBlocks = showPacing && stale && availableBlankBlocks > 0 ? 1 : 0;
   const blankBlocks = availableBlankBlocks - staleBlocks;
   const percent = percentLabel(window.remainingRatio);
 

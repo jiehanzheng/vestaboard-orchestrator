@@ -200,6 +200,30 @@ test("renders blue blocks when quota consumption is slower than elapsed time", (
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 67, 67, 67, 67, 0, 0, 34, 36, 54]);
 });
 
+test("renders only green quota blocks when pacing is hidden", () => {
+  const message = formatQuota(
+    {
+      fiveHour: {
+        remainingRatio: 0.3,
+        resetAt: new Date("2026-06-19T03:00:00-07:00"),
+        durationMins: 300
+      },
+      weekly: {
+        remainingRatio: 0.6,
+        resetAt: new Date("2026-06-22T00:00:00-07:00"),
+        durationMins: 10_080
+      }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00"), showPacing: false, staleRows: ["WK"] }
+  );
+
+  assert.equal(message.text, "5HGGG       30%\nWKGGGGGG    60%\n0300♥06/22♥0000");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 0, 0, 0, 0, 0, 0, 0, 29, 36, 54]);
+  assert.equal(message.text.includes("?"), false);
+  assert.equal(message.characters?.flat().includes(63), false);
+  assert.equal(message.characters?.flat().includes(67), false);
+});
+
 test("demo mode drops five-hour quota by one percentage point", () => {
   const snapshot = applyCodexQuotaDemo(
     {
