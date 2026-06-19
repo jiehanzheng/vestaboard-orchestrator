@@ -24,6 +24,34 @@ interface RateLimitsResult {
   rateLimitsByLimitId?: Record<string, RateLimitBucket> | null;
 }
 
+interface ModelListResult {
+  data: CodexModel[];
+  nextCursor?: string | null;
+}
+
+interface CodexModel {
+  id: string;
+  model: string;
+  supportedReasoningEfforts: ReasoningEffortOption[];
+}
+
+interface ReasoningEffortOption {
+  reasoningEffort: string;
+}
+
+interface ThreadStartResult {
+  thread: {
+    id: string;
+  };
+}
+
+interface TurnStartResult {
+  turn: {
+    id: string;
+    status: string;
+  };
+}
+
 export interface QuotaSnapshot {
   fiveHour?: QuotaWindow;
   weekly?: QuotaWindow;
@@ -38,6 +66,7 @@ export interface QuotaWindow {
 type QuotaReader = () => Promise<QuotaSnapshot>;
 type QuotaRowName = "5H" | "WK";
 type Logger = Pick<Console, "warn">;
+type CodexAppServerOperation<T> = (client: CodexAppServerClient) => Promise<T>;
 
 const BAR_WIDTH = 10;
 const GREEN = 66;
@@ -49,6 +78,8 @@ const NOTE_COLUMNS = 15;
 const APP_SERVER_TIMEOUT_MS = 30_000;
 const FIVE_HOUR_MINS = 300;
 const WEEKLY_MINS = 10_080;
+const AUTO_START_BASE_INSTRUCTIONS = "Obey exactly.";
+const AUTO_START_PROMPT = "Reply exactly: ok. Do not inspect files or run commands.";
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -114,6 +145,8 @@ export function createCodexQuotaPlugin({
   priority = "normal",
   errorPriority = "low",
   timeZone,
+  autoStartWindow5h = false,
+  autoStartWindowWk = false,
   takeDemoMode,
   logger = console,
   now
@@ -122,18 +155,150 @@ export function createCodexQuotaPlugin({
   priority?: Priority;
   errorPriority?: Priority;
   timeZone?: string;
+  autoStartWindow5h?: boolean;
+  autoStartWindowWk?: boolean;
   takeDemoMode?: () => CodexQuotaDemoState | undefined;
   logger?: Logger;
   now?: () => Date;
 } = {}): CodexQuotaPlugin {
-  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode, logger, now });
+  const readQuota = fixture
+    ? readFixtureQuota
+    : createCodexQuotaReader({
+        fiveHour: autoStartWindow5h,
+        weekly: autoStartWindowWk
+      });
+  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, logger, now });
+}
+
+const autoStartedWindowKeys = new Set<string>();
+
+function createCodexQuotaReader(autoStartWindows: AutoStartWindows): QuotaReader {
+  return async () => readCodexQuotaWithAutoStart(autoStartWindows);
+}
+
+interface AutoStartWindows {
+  fiveHour: boolean;
+  weekly: boolean;
 }
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
-  return quotaFromRateLimits(await readRateLimits());
+  return withCodexAppServer(async (client) => {
+    const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
+    return quotaFromRateLimits(rateLimits);
+  });
 }
 
 export async function readRateLimits(): Promise<RateLimitsResult> {
+  return withCodexAppServer((client) => client.request<RateLimitsResult>("account/rateLimits/read"));
+}
+
+async function readCodexQuotaWithAutoStart(autoStartWindows: AutoStartWindows): Promise<QuotaSnapshot> {
+  return withCodexAppServer(async (client) => {
+    const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
+    const snapshot = quotaFromRateLimits(rateLimits);
+    await autoStartUnusedQuotaWindows(client, snapshot, autoStartWindows);
+    return snapshot;
+  });
+}
+
+async function autoStartUnusedQuotaWindows(
+  client: CodexAppServerClient,
+  snapshot: QuotaSnapshot,
+  autoStartWindows: AutoStartWindows
+): Promise<void> {
+  const windowKeys = unusedAutoStartWindowKeys(snapshot, autoStartWindows).filter((key) => !autoStartedWindowKeys.has(key));
+  if (windowKeys.length === 0) {
+    return;
+  }
+
+  const models = await readAllModels(client);
+  const selection = selectAutoStartModel(models);
+  await sendAutoStartPrompt(client, selection);
+
+  for (const key of windowKeys) {
+    autoStartedWindowKeys.add(key);
+  }
+}
+
+export function unusedAutoStartWindowKeys(snapshot: QuotaSnapshot, autoStartWindows: AutoStartWindows): string[] {
+  return [
+    autoStartWindows.fiveHour && isUnusedQuotaWindow(snapshot.fiveHour) ? autoStartWindowKey("5H", snapshot.fiveHour) : undefined,
+    autoStartWindows.weekly && isUnusedQuotaWindow(snapshot.weekly) ? autoStartWindowKey("WK", snapshot.weekly) : undefined
+  ].filter((key): key is string => key !== undefined);
+}
+
+function isUnusedQuotaWindow(window: QuotaWindow | undefined): window is QuotaWindow {
+  return window !== undefined && clamp(window.remainingRatio) >= 1;
+}
+
+function autoStartWindowKey(row: QuotaRowName, window: QuotaWindow): string {
+  return `${row}:${window.resetAt.toISOString()}`;
+}
+
+async function readAllModels(client: CodexAppServerClient): Promise<CodexModel[]> {
+  const models: CodexModel[] = [];
+  let cursor: string | null | undefined;
+
+  do {
+    const page = await client.request<ModelListResult>("model/list", { limit: 100, includeHidden: false, cursor });
+    models.push(...page.data);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return models;
+}
+
+export function selectAutoStartModel(models: CodexModel[]): { model: string; reasoningEffort: string } {
+  const filteredModels = models.filter((model) => !model.model.includes("-spark"));
+  const selectedModel = findModelWithSuffix(filteredModels, "-nano")
+    ?? findModelWithSuffix(filteredModels, "-mini")
+    ?? filteredModels.at(-1);
+
+  if (!selectedModel) {
+    throw new Error("Codex model list did not contain an auto-start model candidate.");
+  }
+
+  const reasoningEffort = selectedModel.supportedReasoningEfforts[0]?.reasoningEffort;
+  if (!reasoningEffort) {
+    throw new Error(`Codex model ${selectedModel.model} did not include a reasoning effort.`);
+  }
+
+  return {
+    model: selectedModel.model,
+    reasoningEffort
+  };
+}
+
+function findModelWithSuffix(models: CodexModel[], suffix: string): CodexModel | undefined {
+  return [...models].reverse().find((model) => model.model.endsWith(suffix));
+}
+
+async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { model: string; reasoningEffort: string }): Promise<void> {
+  const thread = await client.request<ThreadStartResult>("thread/start", {
+    model: selection.model,
+    approvalPolicy: "never",
+    sandbox: "read-only",
+    cwd: process.cwd(),
+    baseInstructions: AUTO_START_BASE_INSTRUCTIONS,
+    ephemeral: true,
+    threadSource: "user"
+  });
+  const turn = await client.request<TurnStartResult>("turn/start", {
+    threadId: thread.thread.id,
+    input: [{ type: "text", text: AUTO_START_PROMPT, text_elements: [] }],
+    model: selection.model,
+    effort: selection.reasoningEffort,
+    approvalPolicy: "never"
+  });
+
+  if (turn.turn.status === "completed") {
+    return;
+  }
+
+  await client.waitForTurnCompletion(thread.thread.id, turn.turn.id);
+}
+
+async function withCodexAppServer<T>(operation: CodexAppServerOperation<T>): Promise<T> {
   const proc = spawn("codex", ["app-server"], { stdio: ["pipe", "pipe", "inherit"] });
   if (!proc.stdin || !proc.stdout) {
     throw new Error("Could not open Codex app-server pipes.");
@@ -142,6 +307,8 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
   const lines = createInterface({ input: proc.stdout });
   let nextId = 0;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
+  const notificationListeners = new Set<(message: { method: string; params?: unknown }) => void>();
+  const notificationRejecters = new Set<(error: Error) => void>();
   let cleanedUp = false;
 
   const cleanup = (): void => {
@@ -170,6 +337,10 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
       entry.reject(error);
     }
     pending.clear();
+    for (const reject of notificationRejecters.values()) {
+      reject(error);
+    }
+    notificationRejecters.clear();
     cleanup();
   };
 
@@ -189,6 +360,29 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
     });
   };
 
+  const waitForTurnCompletion = (threadId: string, turnId: string): Promise<void> => new Promise((resolve, reject) => {
+    const listener = (message: { method: string; params?: unknown }): void => {
+      if (message.method !== "turn/completed") {
+        return;
+      }
+
+      const params = message.params as { threadId?: string; turn?: { id?: string; status?: string; error?: unknown } } | undefined;
+      if (params?.threadId !== threadId || params.turn?.id !== turnId) {
+        return;
+      }
+
+      notificationListeners.delete(listener);
+      notificationRejecters.delete(reject);
+      if (params.turn.status === "failed") {
+        reject(new Error(`Codex auto-start turn failed: ${JSON.stringify(params.turn.error)}`));
+      } else {
+        resolve();
+      }
+    };
+    notificationListeners.add(listener);
+    notificationRejecters.add(reject);
+  });
+
   lines.on("line", (line) => {
     let message: { id?: number; method?: string; result?: unknown; error?: unknown };
     try {
@@ -198,7 +392,12 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
       return;
     }
 
-    if (message.method !== undefined || message.id === undefined) {
+    if (message.method !== undefined) {
+      notificationListeners.forEach((listener) => listener({ method: message.method as string, params: (message as { params?: unknown }).params }));
+      return;
+    }
+
+    if (message.id === undefined) {
       return;
     }
 
@@ -231,10 +430,15 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
       }
     });
     send({ method: "initialized", params: {} });
-    return await request<RateLimitsResult>("account/rateLimits/read");
+    return await operation({ request, waitForTurnCompletion });
   } finally {
     cleanup();
   }
+}
+
+interface CodexAppServerClient {
+  request<T>(method: string, params?: JsonObject): Promise<T>;
+  waitForTurnCompletion(threadId: string, turnId: string): Promise<void>;
 }
 
 export function quotaFromRateLimits(result: RateLimitsResult): QuotaSnapshot {

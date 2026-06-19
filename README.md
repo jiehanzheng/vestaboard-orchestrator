@@ -49,6 +49,8 @@ docker compose up --build
 | `CODEX_QUOTA_ERROR_PRIORITY` | `low` | Priority for the Codex quota error message. |
 | `CODEX_QUOTA_TIME_ZONE` | local process timezone | Time zone used for reset labels. |
 | `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | `5` | How long to pause normal polling after a signal-triggered demo render. |
+| `auto_start_window_5h` / `AUTO_START_WINDOW_5H` | `false` | When enabled, sends one minimal Codex prompt if the 5H quota window is still completely unused at 100%. |
+| `auto_start_window_wk` / `AUTO_START_WINDOW_WK` | `false` | When enabled, sends one minimal Codex prompt if the weekly quota window is still completely unused at 100%. |
 
 The main loop is serial: it runs one orchestrator tick, waits `ORCHESTRATOR_INTERVAL_MINUTES` after that tick completes, then starts the next tick. It does not use `setInterval`, so a slow plugin cannot cause overlapping or immediate follow-up polls.
 
@@ -74,6 +76,8 @@ The percentage shows remaining quota, derived from `100 - usedPercent`. Full quo
 - The reset line uses Vestaboard Note heart code `62` as the separator between the 5H reset, weekly reset date, and weekly reset time. Unused quota windows render reset placeholders so a rolling unused reset timestamp does not cause minute-by-minute board updates.
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
+
+When an auto-start flag is enabled and its quota window is unused, the plugin lists visible Codex models, removes `-spark` models, prefers the last `-nano` model, then the last `-mini` model, then the last remaining model. It uses that model's first supported reasoning level and sends `Reply exactly: ok. Do not inspect files or run commands.` in an ephemeral read-only thread. A running process auto-starts at most once per reset timestamp.
 
 Each plugin returns priority and message together in one call, so the Codex quota plugin runs `codex app-server` at most once per orchestrator tick. If Codex times out, returns malformed JSON, or returns an unexpected quota shape, the plugin returns a lower-priority error message for the board instead of throwing. After the first successful quota read, the plugin caches parsed quota ingredients and can use them to render stale 5H/WK rows with a short status on the reset row during intermittent Codex failures.
 

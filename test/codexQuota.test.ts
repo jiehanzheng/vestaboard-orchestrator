@@ -3,7 +3,14 @@ import test from "node:test";
 
 import { DemoSignalController } from "../src/demoSignals.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
-import { CodexQuotaPlugin, formatError, formatQuota, quotaFromRateLimits } from "../src/plugins/codexQuota/index.js";
+import {
+  CodexQuotaPlugin,
+  formatError,
+  formatQuota,
+  quotaFromRateLimits,
+  selectAutoStartModel,
+  unusedAutoStartWindowKeys
+} from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
@@ -198,6 +205,60 @@ test("demo mode accumulates repeated drops", () => {
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.6);
   assert.equal(message.text.split("\n")[0], "5HGGGGGG    60%");
+});
+
+test("auto-start model selection skips spark and prefers the last nano model", () => {
+  const selection = selectAutoStartModel([
+    model("gpt-5.5", ["medium"]),
+    model("gpt-5.3-codex-spark", ["low"]),
+    model("gpt-5.4-mini", ["medium", "high"]),
+    model("gpt-5.4-nano", ["low", "medium"])
+  ]);
+
+  assert.deepEqual(selection, {
+    model: "gpt-5.4-nano",
+    reasoningEffort: "low"
+  });
+});
+
+test("auto-start model selection falls back to mini and then the last filtered model", () => {
+  assert.deepEqual(selectAutoStartModel([
+    model("gpt-5.5", ["medium"]),
+    model("gpt-5.4-mini", ["low"]),
+    model("gpt-5.3-codex-spark", ["low"])
+  ]), {
+    model: "gpt-5.4-mini",
+    reasoningEffort: "low"
+  });
+  assert.deepEqual(selectAutoStartModel([
+    model("gpt-5.5", ["low"]),
+    model("gpt-5.4", ["medium"]),
+    model("gpt-5.3-codex-spark", ["low"])
+  ]), {
+    model: "gpt-5.4",
+    reasoningEffort: "medium"
+  });
+});
+
+test("auto-start gating is specific to enabled unused quota windows", () => {
+  const snapshot = {
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 0.99, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  };
+
+  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: false }), []);
+  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: true, weekly: false }), ["5H:2026-06-19T09:44:00.000Z"]);
+  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: true }), []);
+});
+
+test("auto-start gating can target only the unused weekly quota window", () => {
+  const snapshot = {
+    fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  };
+
+  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: true, weekly: false }), []);
+  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: true }), ["WK:2026-06-24T21:19:00.000Z"]);
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -464,3 +525,11 @@ test("demo signals queue mode and request a pause after the demo run", () => {
   controller.queue("drop-1-color-block", { info() {} });
   assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1 });
 });
+
+function model(name: string, reasoningEfforts: string[]) {
+  return {
+    id: name,
+    model: name,
+    supportedReasoningEfforts: reasoningEfforts.map((reasoningEffort) => ({ reasoningEffort }))
+  };
+}
