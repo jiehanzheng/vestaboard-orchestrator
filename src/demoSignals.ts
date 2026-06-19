@@ -52,6 +52,13 @@ export class DemoSignalController {
     return demoState;
   }
 
+  restore(demoState: CodexQuotaDemoState): void {
+    this.demoState.pctDrops = Math.max(this.demoState.pctDrops, demoState.pctDrops);
+    this.demoState.forceAutoStart = this.demoState.forceAutoStart || demoState.forceAutoStart === true;
+    this.pending = true;
+    this.pauseAfterRun = true;
+  }
+
   takePauseAfterRun(): boolean {
     const pause = this.pauseAfterRun;
     this.pauseAfterRun = false;

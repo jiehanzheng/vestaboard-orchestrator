@@ -31,6 +31,7 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
+      restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
       logger?: Logger;
       now?: () => Date;
     }
@@ -70,6 +71,9 @@ export class CodexQuotaPlugin implements Plugin {
         message
       };
     } catch (error) {
+      if (demoMode) {
+        this.options.restoreDemoMode?.(demoMode);
+      }
       return this.fallbackUpdate(error, now);
     }
   }
@@ -122,10 +126,12 @@ export function createCodexQuotaPlugin({
   autoStartWindow5h = false,
   autoStartWindowWk = false,
   takeDemoMode,
+  restoreDemoMode,
   logger = console,
   now
 }: CodexQuotaPluginOptions & {
   takeDemoMode?: () => CodexQuotaDemoState | undefined;
+  restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
   logger?: Logger;
   now?: () => Date;
 } = {}): CodexQuotaPlugin {
@@ -135,7 +141,7 @@ export function createCodexQuotaPlugin({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
       });
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, logger, now });
+  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, restoreDemoMode, logger, now });
 }
 
 function statusExpiration(now: Date): Date {

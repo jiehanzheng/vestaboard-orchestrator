@@ -188,8 +188,7 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
   const thread = await client.request<ThreadStartResult>("thread/start", {
     model: selection.model,
     approvalPolicy: "never",
-    sandbox: "read-only",
-    cwd: process.cwd(),
+    sandbox: "readOnly",
     baseInstructions: AUTO_START_BASE_INSTRUCTIONS,
     ephemeral: true,
     threadSource: "user"
@@ -204,6 +203,9 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
 
   if (turn.turn.status === "completed") {
     return;
+  }
+  if (turn.turn.status !== "inProgress") {
+    throw new Error(`Codex auto-start turn started with status ${turn.turn.status || "unknown"}.`);
   }
 
   await client.waitForTurnCompletion(thread.thread.id, turn.turn.id);

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DemoSignalController } from "../src/demoSignals.js";
-import { isMatchingTurnCompletion } from "../src/plugins/codexQuota/appServer.js";
+import { isMatchingTurnCompletion, turnCompletionFailure } from "../src/plugins/codexQuota/appServer.js";
+import { CodexAutoStartSidecar } from "../src/plugins/codexQuota/autoStartSidecar.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import {
   AutoStartPingState,
@@ -351,6 +352,76 @@ test("app-server turn completion matching accepts events without threadId", () =
   assert.equal(isMatchingTurnCompletion({ turn: { id: "turn-2" } }, "thread-1", "turn-1"), false);
 });
 
+test("app-server turn completion only treats completed as success", () => {
+  assert.equal(turnCompletionFailure({ status: "completed" }), undefined);
+  assert.match(turnCompletionFailure({ status: "failed", error: "boom" })?.message ?? "", /status failed/);
+  assert.match(turnCompletionFailure({ status: "interrupted" })?.message ?? "", /status interrupted/);
+  assert.match(turnCompletionFailure({})?.message ?? "", /status unknown/);
+});
+
+test("auto-start sidecar starts read-only threads without cwd", async () => {
+  let threadStartParams: Record<string, unknown> | undefined;
+  const sidecar = new CodexAutoStartSidecar({ fiveHour: false, weekly: false });
+  const client = {
+    async request<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+      if (method === "model/list") {
+        return {
+          data: [model("gpt-5.4-mini", ["low"])],
+          nextCursor: null
+        } as T;
+      }
+      if (method === "thread/start") {
+        threadStartParams = params;
+        return { thread: { id: "thread-1" } } as T;
+      }
+      if (method === "turn/start") {
+        return { turn: { id: "turn-1", status: "completed" } } as T;
+      }
+      throw new Error(`unexpected method ${method}`);
+    },
+    async waitForTurnCompletion() {}
+  };
+
+  await sidecar.afterQuotaRead({
+    client,
+    snapshot: quotaSnapshot({ fiveHour: 0.4, weekly: 0.2 }),
+    force: true,
+    now: new Date("2026-06-19T00:00:00-07:00")
+  });
+
+  assert.equal(threadStartParams?.sandbox, "readOnly");
+  assert.equal(Object.hasOwn(threadStartParams ?? {}, "cwd"), false);
+});
+
+test("auto-start sidecar rejects non-progress turn start statuses", async () => {
+  const sidecar = new CodexAutoStartSidecar({ fiveHour: false, weekly: false });
+  const client = {
+    async request<T>(method: string): Promise<T> {
+      if (method === "model/list") {
+        return {
+          data: [model("gpt-5.4-mini", ["low"])],
+          nextCursor: null
+        } as T;
+      }
+      if (method === "thread/start") {
+        return { thread: { id: "thread-1" } } as T;
+      }
+      if (method === "turn/start") {
+        return { turn: { id: "turn-1", status: "interrupted" } } as T;
+      }
+      throw new Error(`unexpected method ${method}`);
+    },
+    async waitForTurnCompletion() {}
+  };
+
+  await assert.rejects(() => sidecar.afterQuotaRead({
+    client,
+    snapshot: quotaSnapshot({ fiveHour: 0.4, weekly: 0.2 }),
+    force: true,
+    now: new Date("2026-06-19T00:00:00-07:00")
+  }), /started with status interrupted/);
+});
+
 test("codex plugin keeps fresh quota display when auto-start sidecar fails", async () => {
   const warnings: unknown[][] = [];
   const plugin = new CodexQuotaPlugin(async () => ({
@@ -675,6 +746,39 @@ test("demo signals queue mode and request a pause after the demo run", () => {
   assert.deepEqual(controller.take(), { pctDrops: 2, forceAutoStart: true });
   controller.queue("drop-1-pct", { info() {} });
   assert.deepEqual(controller.take(), { pctDrops: 3 });
+});
+
+test("codex plugin restores queued demo mode when quota read fails", async () => {
+  const controller = new DemoSignalController();
+  const forceAutoStartValues: Array<boolean | undefined> = [];
+  let fail = true;
+  controller.queue("drop-1-pct", { info() {} });
+  controller.queue("force-auto-start", { info() {} });
+
+  const plugin = new CodexQuotaPlugin(async (options) => {
+    forceAutoStartValues.push(options?.forceAutoStart);
+    if (fail) {
+      fail = false;
+      throw new Error("temporary quota failure");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, {
+    priority: "normal",
+    errorPriority: "low",
+    timeZone: "America/Los_Angeles",
+    takeDemoMode: () => controller.take(),
+    restoreDemoMode: (demo) => controller.restore(demo)
+  });
+
+  await plugin.getUpdate();
+  const retry = await plugin.getUpdate();
+
+  assert.deepEqual(forceAutoStartValues, [true, true]);
+  assert.equal(retry.message.text.split("\n")[0].endsWith("75%"), true);
 });
 
 function model(name: string, reasoningEfforts: string[]) {

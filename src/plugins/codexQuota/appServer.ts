@@ -21,6 +21,14 @@ export function isMatchingTurnCompletion(
   return matchesThread && matchesTurn;
 }
 
+export function turnCompletionFailure(turn: { status?: string; error?: unknown }): Error | undefined {
+  if (turn.status === "completed") {
+    return undefined;
+  }
+
+  return new Error(`Codex auto-start turn ended with status ${turn.status ?? "unknown"}: ${JSON.stringify(turn.error)}`);
+}
+
 export async function withCodexAppServer<T>(operation: CodexAppServerOperation<T>): Promise<T> {
   const proc = spawn("codex", ["app-server"], { stdio: ["pipe", "pipe", "inherit"] });
   if (!proc.stdin || !proc.stdout) {
@@ -97,8 +105,9 @@ export async function withCodexAppServer<T>(operation: CodexAppServerOperation<T
 
       notificationListeners.delete(listener);
       notificationRejecters.delete(reject);
-      if (turn.status === "failed") {
-        reject(new Error(`Codex auto-start turn failed: ${JSON.stringify(turn.error)}`));
+      const failure = turnCompletionFailure(turn);
+      if (failure) {
+        reject(failure);
       } else {
         resolve();
       }

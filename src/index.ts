@@ -28,7 +28,8 @@ const plugins = [
     timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
     autoStartWindow5h: envFlag(process.env.AUTO_START_WINDOW_5H),
     autoStartWindowWk: envFlag(process.env.AUTO_START_WINDOW_WK),
-    takeDemoMode: () => demoSignals.take()
+    takeDemoMode: () => demoSignals.take(),
+    restoreDemoMode: (demo) => demoSignals.restore(demo)
   })
 ];
 
