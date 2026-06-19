@@ -91,6 +91,14 @@ const AUTO_START_BASE_INSTRUCTIONS = "Obey exactly.";
 const AUTO_START_PROMPT = "Reply exactly: ok. Do not inspect files or run commands.";
 const THIRD_ROW_MESSAGE_TTL_MS = 5 * 60_000;
 const AUTO_START_PING_COOLDOWN_MS = 30 * 60_000;
+const THIRD_ROW_PRIORITY = "high";
+const PRIORITY_VALUES: Record<string, number> = {
+  none: 0,
+  low: 10,
+  normal: 50,
+  high: 80,
+  urgent: 100
+};
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -128,10 +136,11 @@ export class CodexQuotaPlugin implements Plugin {
         this.thirdRowMessages.push(missingStatus(missingWindows), new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS));
       }
 
+      const statusRow = this.thirdRowMessages.top(now);
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
         now,
-        statusRow: this.thirdRowMessages.top(now),
+        statusRow,
         staleRows
       });
 
@@ -139,26 +148,28 @@ export class CodexQuotaPlugin implements Plugin {
         logIncompleteQuota(this.options.logger, missingWindows, staleRows, this.options.errorPriority);
       }
 
+      const priority = missingWindows.length > 0 ? this.options.errorPriority : this.options.priority;
       return {
-        priority: missingWindows.length > 0 ? this.options.errorPriority : this.options.priority,
+        priority: statusRow ? bumpThirdRowPriority(priority) : priority,
         message
       };
     } catch (error) {
       const cachedQuota = this.quotaCache.snapshot();
       const status = errorStatus(error);
       this.thirdRowMessages.push(status, new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS));
+      const statusRow = this.quotaCache.hasAny() ? this.thirdRowMessages.top(now) : undefined;
       const message = this.quotaCache.hasAny()
         ? formatQuota(cachedQuota, {
             timeZone: this.options.timeZone,
             now,
-            statusRow: this.thirdRowMessages.top(now),
+            statusRow,
             staleRows: cachedRowsPresentIn(cachedQuota)
           })
         : formatError(error);
       logQuotaReadFailure(this.options.logger, error, this.options.errorPriority, message, this.quotaCache.state());
 
       return {
-        priority: this.options.errorPriority,
+        priority: statusRow ? bumpThirdRowPriority(this.options.errorPriority) : this.options.errorPriority,
         message
       };
     }
@@ -282,6 +293,25 @@ function pingInCooldown(now: Date): boolean {
 
 function autoStartPingMessage(selection: { model: string; reasoningEffort: string }): string {
   return `ping ${selection.model}${selection.reasoningEffort}`;
+}
+
+function bumpThirdRowPriority(priority: Priority): Priority {
+  return priorityValue(priority) >= PRIORITY_VALUES[THIRD_ROW_PRIORITY] ? priority : THIRD_ROW_PRIORITY;
+}
+
+function priorityValue(priority: Priority): number {
+  if (typeof priority === "number" && Number.isFinite(priority)) {
+    return priority;
+  }
+
+  const normalized = String(priority).trim().toLowerCase();
+  const namedPriority = PRIORITY_VALUES[normalized];
+  if (namedPriority !== undefined) {
+    return namedPriority;
+  }
+
+  const numericPriority = Number(normalized);
+  return Number.isFinite(numericPriority) ? numericPriority : 0;
 }
 
 async function readAllModels(client: CodexAppServerClient): Promise<CodexModel[]> {

@@ -282,6 +282,9 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   assert.equal(first.message.text.split("\n")[2], "PING GPT 5 4 MI");
   assert.equal(retained.message.text.split("\n")[2], "PING GPT 5 4 MI");
   assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(first.priority, "high");
+  assert.equal(retained.priority, "high");
+  assert.equal(expired.priority, "normal");
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -328,7 +331,7 @@ test("codex plugin renders cached quota ingredients when a later quota read fail
   fail = true;
   const fallback = await plugin.getUpdate();
 
-  assert.equal(fallback.priority, "low");
+  assert.equal(fallback.priority, "high");
   assert.equal(fallback.message.text.split("\n")[0].replace("?", " "), good.message.text.split("\n")[0]);
   assert.equal(fallback.message.text.split("\n")[1].replace("?", " "), good.message.text.split("\n")[1]);
   assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
@@ -360,7 +363,7 @@ test("codex plugin fills missing ingredients from cache and marks stale row when
   partial = true;
   const fallback = await plugin.getUpdate();
 
-  assert.equal(fallback.priority, "low");
+  assert.equal(fallback.priority, "high");
   assert.match(fallback.message.text.split("\n")[0], /^5H/);
   assert.match(fallback.message.text.split("\n")[1], /\?/);
   assert.equal(fallback.message.text.split("\n")[2], "MISS WK        ");
@@ -422,6 +425,9 @@ test("codex plugin retains transient error status after the next successful read
   assert.equal(error.message.text.split("\n")[2], "TIMEOUT        ");
   assert.equal(retained.message.text.split("\n")[2], "TIMEOUT        ");
   assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(error.priority, "high");
+  assert.equal(retained.priority, "high");
+  assert.equal(expired.priority, "normal");
 });
 
 test("codex plugin renders missing row placeholder when no cached ingredient exists", async () => {
@@ -431,7 +437,7 @@ test("codex plugin renders missing row placeholder when no cached ingredient exi
 
   const update = await plugin.getUpdate();
 
-  assert.equal(update.priority, "low");
+  assert.equal(update.priority, "high");
   assert.equal(update.message.text.split("\n")[1], "WK          --%");
   assert.equal(update.message.text.split("\n")[2], "MISS WK        ");
 });
