@@ -26,6 +26,7 @@ const plugins = [
     priority: process.env.CODEX_QUOTA_PRIORITY ?? "normal",
     errorPriority: process.env.CODEX_QUOTA_ERROR_PRIORITY ?? "low",
     timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
+    showPacing: envOnOff(process.env.CODEX_QUOTA_SHOW_PACING, true),
     autoStartWindow5h: envFlag(process.env.CODEX_AUTO_START_WINDOW_5H),
     autoStartWindowWk: envFlag(process.env.CODEX_AUTO_START_WINDOW_WK),
     takeDemoMode: () => demoSignals.take(),
@@ -62,4 +63,12 @@ async function runWithDemoSignals(): Promise<void> {
 
 function envFlag(value: string | undefined): boolean {
   return value === "1" || value?.toLowerCase() === "true";
+}
+
+function envOnOff(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) return defaultValue;
+  const normalized = value.toLowerCase();
+  if (normalized === "off" || normalized === "false" || normalized === "0") return false;
+  if (normalized === "on" || normalized === "true" || normalized === "1") return true;
+  return defaultValue;
 }
