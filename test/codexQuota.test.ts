@@ -164,15 +164,19 @@ test("demo mode accumulates repeated drops", () => {
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
+  const warnings: unknown[][] = [];
   const plugin = new CodexQuotaPlugin(async () => {
     throw new Error("invalid json from codex");
-  }, { priority: "normal", errorPriority: "low" });
+  }, { priority: "normal", errorPriority: "low", logger: { warn: (...args) => warnings.push(args) } });
 
   const update = await plugin.getUpdate();
 
   assert.equal(update.priority, "low");
   assert.equal(update.message.text.split("\n")[0], "CODEX QUOTA ERR");
   assert.equal(update.message.characters?.every((row) => row.length === 15), true);
+  assert.match(String(warnings[0]?.[0]), /Codex quota read failed; rendering error message at priority low/);
+  assert.match(String(warnings[0]?.[0]), /CODEX QUOTA ERR/);
+  assert.equal((warnings[0]?.[1] as Error | undefined)?.message, "invalid json from codex");
 });
 
 test("orchestrator asks each plugin for priority and message in one call", async () => {

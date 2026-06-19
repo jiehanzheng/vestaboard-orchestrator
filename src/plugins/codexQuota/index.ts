@@ -58,6 +58,7 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
+      logger?: Pick<Console, "warn">;
     }
   ) {}
 
@@ -69,9 +70,15 @@ export class CodexQuotaPlugin implements Plugin {
         message: formatQuota(applyCodexQuotaDemo(await this.readQuota(), demoMode), { timeZone: this.options.timeZone })
       };
     } catch (error) {
+      const message = formatError(error);
+      this.options.logger?.warn(
+        `Codex quota read failed; rendering error message at priority ${String(this.options.errorPriority)}: ${messagePreview(message)}`,
+        error
+      );
+
       return {
         priority: this.options.errorPriority,
-        message: formatError(error)
+        message
       };
     }
   }
@@ -82,15 +89,17 @@ export function createCodexQuotaPlugin({
   priority = "normal",
   errorPriority = "low",
   timeZone,
-  takeDemoMode
+  takeDemoMode,
+  logger = console
 }: {
   fixture?: boolean;
   priority?: Priority;
   errorPriority?: Priority;
   timeZone?: string;
   takeDemoMode?: () => CodexQuotaDemoState | undefined;
+  logger?: Pick<Console, "warn">;
 } = {}): CodexQuotaPlugin {
-  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode });
+  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode, logger });
 }
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
@@ -241,6 +250,10 @@ export function formatError(error: unknown): VestaboardMessage {
     text: rows.join("\n"),
     characters: rows.map((row) => encodeRow(row.padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS)))
   };
+}
+
+function messagePreview(message: VestaboardMessage): string {
+  return message.text.replace(/\n/g, " | ");
 }
 
 function bucketsInPreferenceOrder(result: RateLimitsResult): RateLimitBucket[] {
