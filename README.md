@@ -24,6 +24,17 @@ Docker is the intended runtime path.
    docker compose up --build
    ```
 
+Core environment variables configure the orchestrator and Vestaboard transport. Plugin-specific variables are documented in each plugin section below.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ORCHESTRATOR_INTERVAL_MINUTES` | `5` | How often the orchestrator polls plugins. |
+| `VESTABOARD_MODE` | `cloud` | `cloud` for the Vestaboard Cloud API or `local` for the local API. |
+| `VESTABOARD_TOKEN` | | Vestaboard Cloud Read/Write API token. Required when `VESTABOARD_MODE=cloud`. |
+| `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
+| `VESTABOARD_LOCAL_API_KEY` | | Local API key. Required when `VESTABOARD_MODE=local`. |
+| `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
+
 The loop is serial: it runs one plugin pass, sends the selected message, waits `ORCHESTRATOR_INTERVAL_MINUTES`, then starts the next pass. If the winning message is unchanged from the last successful send, the orchestrator skips the Vestaboard API call.
 
 ## Plugins
@@ -61,6 +72,7 @@ If Codex is temporarily unavailable after a successful read, the plugin can reus
 | `CODEX_QUOTA_ERROR_PRIORITY` | `low` | Priority used when the plugin can only render an error or incomplete quota. |
 | `CODEX_QUOTA_TIME_ZONE` | local process timezone | Time zone used for reset labels. |
 | `CODEX_QUOTA_SHOW_PACING` | `on` | `on` overlays red/blue pacing blocks; `off` shows only green quota blocks and blanks. |
+| `CODEX_HOST_DIR` | `${HOME}/.codex` | Host Codex config directory mounted into Docker at `/home/node/.codex`. |
 | `CODEX_AUTO_START_WINDOW_5H` | `false` | Ping Codex once when the 5-hour window is completely unused at 100%. |
 | `CODEX_AUTO_START_WINDOW_WK` | `false` | Ping Codex once when the weekly window is completely unused at 100%. |
 | `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | `5` | How long normal polling pauses after a signal-triggered demo render. |
