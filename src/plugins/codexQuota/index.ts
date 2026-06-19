@@ -264,7 +264,7 @@ export function formatQuota(
   const fiveHour = quotaLine("5H", snapshot.fiveHour, now, staleRows.includes("5H"));
   const weekly = quotaLine("WK", snapshot.weekly, now, staleRows.includes("WK"));
   const reset = typeof options === "string" || !options.statusRow
-    ? resetLine(snapshot.fiveHour?.resetAt, snapshot.weekly?.resetAt, timeZone)
+    ? resetLine(snapshot.fiveHour, snapshot.weekly, timeZone)
     : statusLine(options.statusRow);
 
   return {
@@ -495,11 +495,15 @@ function timeRemainingRatio(window: QuotaWindow, now: Date): number {
   return clamp((window.resetAt.getTime() - now.getTime()) / durationMs);
 }
 
-function resetLine(fiveHour: Date | undefined, weekly: Date | undefined, timeZone?: string): string {
-  const fiveHourReset = fiveHour ? hhmm(fiveHour, timeZone) : "----";
-  const weeklyDate = weekly ? mmdd(weekly, timeZone) : "--/--";
-  const weeklyTime = weekly ? hhmm(weekly, timeZone) : "----";
+function resetLine(fiveHour: QuotaWindow | undefined, weekly: QuotaWindow | undefined, timeZone?: string): string {
+  const fiveHourReset = shouldShowReset(fiveHour) ? hhmm(fiveHour.resetAt, timeZone) : "----";
+  const weeklyDate = shouldShowReset(weekly) ? mmdd(weekly.resetAt, timeZone) : "--/--";
+  const weeklyTime = shouldShowReset(weekly) ? hhmm(weekly.resetAt, timeZone) : "----";
   return `${fiveHourReset}♥${weeklyDate}♥${weeklyTime}`;
+}
+
+function shouldShowReset(window: QuotaWindow | undefined): window is QuotaWindow {
+  return window !== undefined && clamp(window.remainingRatio) < 1;
 }
 
 function statusLine(status: string): string {
