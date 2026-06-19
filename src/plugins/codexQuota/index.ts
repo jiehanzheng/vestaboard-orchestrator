@@ -50,6 +50,7 @@ const WEEKLY_MINS = 10_080;
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
+  private lastQuotaMessage: VestaboardMessage | undefined;
 
   constructor(
     private readonly readQuota: QuotaReader,
@@ -65,12 +66,15 @@ export class CodexQuotaPlugin implements Plugin {
   async getUpdate(): Promise<PluginUpdate> {
     try {
       const demoMode = this.options.takeDemoMode?.();
+      const message = formatQuota(applyCodexQuotaDemo(await this.readQuota(), demoMode), { timeZone: this.options.timeZone });
+      this.lastQuotaMessage = message;
+
       return {
         priority: this.options.priority,
-        message: formatQuota(applyCodexQuotaDemo(await this.readQuota(), demoMode), { timeZone: this.options.timeZone })
+        message
       };
     } catch (error) {
-      const message = formatError(error);
+      const message = this.lastQuotaMessage ? formatCachedError(this.lastQuotaMessage, error) : formatError(error);
       this.options.logger?.warn(
         `Codex quota read failed; rendering error message at priority ${String(this.options.errorPriority)}: ${messagePreview(message)}`,
         error
@@ -252,8 +256,40 @@ export function formatError(error: unknown): VestaboardMessage {
   };
 }
 
+export function formatCachedError(cachedMessage: VestaboardMessage, error: unknown): VestaboardMessage {
+  const cachedRows = cachedMessage.text.split("\n");
+  const cachedCharacters = cachedMessage.characters;
+  const errorRow = cachedErrorRow(error);
+
+  return {
+    text: [cachedRows[0] ?? "".padEnd(NOTE_COLUMNS, " "), cachedRows[1] ?? "".padEnd(NOTE_COLUMNS, " "), errorRow].join("\n"),
+    characters: [
+      cachedCharacters?.[0] ?? encodeRow((cachedRows[0] ?? "").padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS)),
+      cachedCharacters?.[1] ?? encodeRow((cachedRows[1] ?? "").padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS)),
+      encodeRow(errorRow)
+    ]
+  };
+}
+
 function messagePreview(message: VestaboardMessage): string {
   return message.text.replace(/\n/g, " | ");
+}
+
+function cachedErrorRow(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  const sanitized = sanitizeError(detail);
+  const summary = summarizeError(sanitized);
+  return summary.padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS);
+}
+
+function summarizeError(message: string): string {
+  if (message.includes("TIMED OUT") || message.includes("TIMEOUT")) return "TIMEOUT";
+  if (message.includes("INVALID JSON")) return "BAD JSON";
+  if (message.includes("EXITED")) return "EXIT";
+  if (message.includes("COULD NOT START")) return "START";
+  if (message.includes("RATE LIMIT")) return "RATE LIMIT";
+  if (message.includes("BUBBLEWRAP")) return "BWRAP";
+  return message.split(" ").filter(Boolean).slice(0, 2).join(" ") || "CODEX";
 }
 
 function bucketsInPreferenceOrder(result: RateLimitsResult): RateLimitBucket[] {

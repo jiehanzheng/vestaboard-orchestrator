@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { DemoSignalController } from "../src/demoSignals.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
-import { CodexQuotaPlugin, formatError, formatQuota, quotaFromRateLimits } from "../src/plugins/codexQuota/index.js";
+import { CodexQuotaPlugin, formatCachedError, formatError, formatQuota, quotaFromRateLimits } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
@@ -177,6 +177,48 @@ test("codex plugin returns low-priority error message when quota read fails", as
   assert.match(String(warnings[0]?.[0]), /Codex quota read failed; rendering error message at priority low/);
   assert.match(String(warnings[0]?.[0]), /CODEX QUOTA ERR/);
   assert.equal((warnings[0]?.[1] as Error | undefined)?.message, "invalid json from codex");
+});
+
+test("codex plugin preserves cached quota rows when a later quota read fails", async () => {
+  let fail = false;
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      throw new Error("Codex app-server timed out after 10000ms.");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
+
+  const good = await plugin.getUpdate();
+  fail = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "low");
+  assert.equal(fallback.message.text.split("\n")[0], good.message.text.split("\n")[0]);
+  assert.equal(fallback.message.text.split("\n")[1], good.message.text.split("\n")[1]);
+  assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
+  assert.deepEqual(fallback.message.characters?.[0], good.message.characters?.[0]);
+  assert.deepEqual(fallback.message.characters?.[1], good.message.characters?.[1]);
+});
+
+test("cached quota error formatter abbreviates intermittent Codex failures", () => {
+  const cached = formatQuota(
+    {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T22:44:00-07:00") }
+  );
+
+  const fallback = formatCachedError(cached, new Error("Invalid JSON from Codex: nope"));
+
+  assert.equal(fallback.text.split("\n")[0], cached.text.split("\n")[0]);
+  assert.equal(fallback.text.split("\n")[1], cached.text.split("\n")[1]);
+  assert.equal(fallback.text.split("\n")[2], "BAD JSON       ");
+  assert.equal(fallback.characters?.every((row) => row.length === 15), true);
 });
 
 test("orchestrator asks each plugin for priority and message in one call", async () => {
