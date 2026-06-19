@@ -80,6 +80,43 @@ test("renders full quota as 100 while preserving row width", () => {
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 27, 36, 36]);
 });
 
+test("does not render reset time for unused quota windows", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
+  );
+
+  assert.equal(message.text.split("\n")[2], "----♥--/--♥----");
+  assert.deepEqual(message.characters?.[2], [44, 44, 44, 44, 62, 44, 44, 59, 44, 44, 62, 44, 44, 44, 44]);
+});
+
+test("renders reset time only for the used five-hour quota window", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
+  );
+
+  assert.equal(message.text.split("\n")[2], "0244♥--/--♥----");
+});
+
+test("renders reset date and time only for the used weekly quota window", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.99, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
+  );
+
+  assert.equal(message.text.split("\n")[2], "----♥06/24♥1419");
+});
+
 test("renders orange blocks when quota remaining is behind time remaining", () => {
   const message = formatQuota(
     {
