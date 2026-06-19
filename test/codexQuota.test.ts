@@ -20,10 +20,29 @@ test("uses aggregate rateLimits primary and secondary windows", () => {
     }
   });
 
+  assert.ok(snapshot.fiveHour);
+  assert.ok(snapshot.weekly);
   assert.equal(snapshot.fiveHour.remainingRatio, 0.99);
   assert.equal(snapshot.weekly.remainingRatio, 0.34);
   assert.equal(snapshot.fiveHour.resetAt.toISOString(), "2026-06-19T09:44:00.000Z");
   assert.equal(snapshot.weekly.resetAt.toISOString(), "2026-06-21T21:19:00.000Z");
+});
+
+test("renders partial quota when only the five-hour window is present", () => {
+  const snapshot = quotaFromRateLimits({
+    rateLimits: {
+      limitId: "codex",
+      primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1_781_862_240 },
+      secondary: null
+    }
+  });
+
+  const message = formatQuota(snapshot, "America/Los_Angeles");
+
+  assert.ok(snapshot.fiveHour);
+  assert.equal(snapshot.weekly, undefined);
+  assert.equal(message.text, "5HGGGGGGGG  80%\nWK          --%\n0244 --/-- ----");
+  assert.deepEqual(message.characters?.[1], [23, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 44, 54]);
 });
 
 test("renders remaining quota as green Vestaboard Note character codes", () => {
@@ -38,6 +57,19 @@ test("renders remaining quota as green Vestaboard Note character codes", () => {
   assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244 06/24 1419");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 35, 35, 54]);
   assert.equal(message.characters?.every((row) => row.length === 15), true);
+});
+
+test("renders full quota as 100 while preserving row width", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00") },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00") }
+    },
+    "America/Los_Angeles"
+  );
+
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGGGGG100");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 27, 36, 36]);
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -75,6 +107,35 @@ test("orchestrator asks each plugin for priority and message in one call", async
 
   assert.equal(reads, 1);
   assert.equal(sent[0]?.text.includes("0244 06/24 1419"), true);
+});
+
+test("orchestrator accepts numeric priority strings", async () => {
+  const sent: VestaboardMessage[] = [];
+
+  await tick({
+    plugins: [
+      {
+        id: "low-numeric",
+        async getUpdate() {
+          return { priority: "10", message: { text: "low" } };
+        }
+      },
+      {
+        id: "high-numeric",
+        async getUpdate() {
+          return { priority: "75", message: { text: "high" } };
+        }
+      }
+    ],
+    vestaboard: {
+      async send(message) {
+        sent.push(message);
+      }
+    },
+    logger: { info() {}, warn() {} }
+  });
+
+  assert.equal(sent[0]?.text, "high");
 });
 
 test("error message is encodable for Vestaboard Note", () => {

@@ -24,8 +24,8 @@ interface RateLimitsResult {
 }
 
 interface QuotaSnapshot {
-  fiveHour: QuotaWindow;
-  weekly: QuotaWindow;
+  fiveHour?: QuotaWindow;
+  weekly?: QuotaWindow;
 }
 
 interface QuotaWindow {
@@ -40,6 +40,8 @@ const GREEN = 66;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
 const APP_SERVER_TIMEOUT_MS = 10_000;
+const FIVE_HOUR_MINS = 300;
+const WEEKLY_MINS = 10_080;
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -187,21 +189,26 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
 }
 
 export function quotaFromRateLimits(result: RateLimitsResult): QuotaSnapshot {
-  const bucket = result.rateLimits ?? firstBucket(result.rateLimitsByLimitId);
-  if (!bucket?.primary || !bucket.secondary) {
-    throw new Error("Codex rateLimits result must include primary and secondary quota windows.");
+  const windows = bucketsInPreferenceOrder(result).flatMap((bucket) => [bucket.primary, bucket.secondary].filter(isRateWindow));
+  const snapshot = {
+    fiveHour: windows.find((window) => window.windowDurationMins === FIVE_HOUR_MINS),
+    weekly: windows.find((window) => window.windowDurationMins === WEEKLY_MINS)
+  };
+
+  if (!snapshot.fiveHour && !snapshot.weekly) {
+    throw new Error("Codex rateLimits result must include a 5H or weekly quota window.");
   }
 
   return {
-    fiveHour: quotaWindow(bucket.primary),
-    weekly: quotaWindow(bucket.secondary)
+    fiveHour: snapshot.fiveHour ? quotaWindow(snapshot.fiveHour) : undefined,
+    weekly: snapshot.weekly ? quotaWindow(snapshot.weekly) : undefined
   };
 }
 
 export function formatQuota(snapshot: QuotaSnapshot, timeZone?: string): VestaboardMessage {
-  const fiveHour = quotaLine("5H", snapshot.fiveHour.remainingRatio);
-  const weekly = quotaLine("WK", snapshot.weekly.remainingRatio);
-  const reset = resetLine(snapshot.fiveHour.resetAt, snapshot.weekly.resetAt, timeZone);
+  const fiveHour = quotaLine("5H", snapshot.fiveHour);
+  const weekly = quotaLine("WK", snapshot.weekly);
+  const reset = resetLine(snapshot.fiveHour?.resetAt, snapshot.weekly?.resetAt, timeZone);
 
   return {
     text: [fiveHour.text, weekly.text, reset].join("\n"),
@@ -218,8 +225,15 @@ export function formatError(error: unknown): VestaboardMessage {
   };
 }
 
-function firstBucket(buckets?: Record<string, RateLimitBucket> | null): RateLimitBucket | null {
-  return buckets ? (Object.values(buckets)[0] ?? null) : null;
+function bucketsInPreferenceOrder(result: RateLimitsResult): RateLimitBucket[] {
+  return [
+    result.rateLimits,
+    ...Object.values(result.rateLimitsByLimitId ?? {})
+  ].filter((bucket): bucket is RateLimitBucket => bucket !== null && bucket !== undefined);
+}
+
+function isRateWindow(window: RateWindow | null | undefined): window is RateWindow {
+  return window !== null && window !== undefined;
 }
 
 function quotaWindow(window: RateWindow): QuotaWindow {
@@ -229,9 +243,14 @@ function quotaWindow(window: RateWindow): QuotaWindow {
   };
 }
 
-function quotaLine(prefix: "5H" | "WK", remainingRatio: number): { text: string; characters: number[] } {
-  const filled = Math.round(clamp(remainingRatio) * BAR_WIDTH);
-  const percent = `${String(Math.min(99, Math.round(clamp(remainingRatio) * 100))).padStart(2, "0")}%`;
+function quotaLine(prefix: "5H" | "WK", window?: QuotaWindow): { text: string; characters: number[] } {
+  if (!window) {
+    const text = `${prefix}${" ".repeat(BAR_WIDTH)}--%`;
+    return { text, characters: encodeRow(text) };
+  }
+
+  const filled = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
+  const percent = percentLabel(window.remainingRatio);
 
   return {
     text: `${prefix}${"G".repeat(filled)}${" ".repeat(BAR_WIDTH - filled)}${percent}`,
@@ -239,8 +258,16 @@ function quotaLine(prefix: "5H" | "WK", remainingRatio: number): { text: string;
   };
 }
 
-function resetLine(fiveHour: Date, weekly: Date, timeZone?: string): string {
-  return `${hhmm(fiveHour, timeZone)} ${mmdd(weekly, timeZone)} ${hhmm(weekly, timeZone)}`;
+function percentLabel(remainingRatio: number): string {
+  const percent = Math.round(clamp(remainingRatio) * 100);
+  return percent >= 100 ? "100" : `${String(percent).padStart(2, "0")}%`;
+}
+
+function resetLine(fiveHour: Date | undefined, weekly: Date | undefined, timeZone?: string): string {
+  const fiveHourReset = fiveHour ? hhmm(fiveHour, timeZone) : "----";
+  const weeklyDate = weekly ? mmdd(weekly, timeZone) : "--/--";
+  const weeklyTime = weekly ? hhmm(weekly, timeZone) : "----";
+  return `${fiveHourReset} ${weeklyDate} ${weeklyTime}`;
 }
 
 function hhmm(date: Date, timeZone?: string): string {
@@ -286,6 +313,7 @@ function encode(text: string): number[] {
 function charCode(char: string): number {
   if (char === " ") return BLANK;
   if (char === "%") return 54;
+  if (char === "-") return 44;
   if (char === "/") return 59;
 
   const code = char.toUpperCase().charCodeAt(0);

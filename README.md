@@ -59,7 +59,7 @@ WKGGGG      40%
 1330 06/22 0000
 ```
 
-`G` in dry-run output represents Vestaboard green block character code `66`; the actual API payload sends `characters`, not text. The percentage and 10-block bar show remaining quota, derived from `100 - usedPercent`.
+`G` in dry-run output represents Vestaboard green block character code `66`; the actual API payload sends `characters`, not text. The percentage and 10-block bar show remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` so the 15-column row still fits; unavailable windows render as `--%`.
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
 

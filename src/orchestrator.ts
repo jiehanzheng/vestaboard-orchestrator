@@ -96,5 +96,12 @@ function toPriorityNumber(priority: Priority): number {
     return priority;
   }
 
-  return PRIORITIES[String(priority).toLowerCase()] ?? 0;
+  const normalized = String(priority).trim().toLowerCase();
+  const namedPriority = PRIORITIES[normalized];
+  if (namedPriority !== undefined) {
+    return namedPriority;
+  }
+
+  const numericPriority = Number(normalized);
+  return Number.isFinite(numericPriority) ? numericPriority : 0;
 }
