@@ -152,6 +152,15 @@ export function logIncompleteQuota(
   });
 }
 
+export function logAutoStartFailure(logger: Logger | undefined, error: unknown): void {
+  logger?.warn("Codex quota auto-start failed after quota read.", {
+    reason: summarizeFailure(error),
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    boardStatus: errorStatus(error)
+  });
+}
+
 export function bumpThirdRowPriority(priority: Priority): Priority {
   return priorityValue(priority) >= PRIORITY_VALUES[THIRD_ROW_PRIORITY] ? priority : THIRD_ROW_PRIORITY;
 }

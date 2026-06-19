@@ -19,6 +19,7 @@ export interface QuotaPollOptions {
 export interface QuotaPollResult {
   snapshot: QuotaSnapshot;
   thirdRowMessage?: string;
+  sidecarError?: unknown;
 }
 
 export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaSnapshot | QuotaPollResult>;

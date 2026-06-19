@@ -6,6 +6,7 @@ import {
   cachedRowsPresentIn,
   cachedRowsUsedFor,
   errorStatus,
+  logAutoStartFailure,
   logIncompleteQuota,
   logQuotaReadFailure,
   missingQuotaWindows,
@@ -41,12 +42,15 @@ export class CodexQuotaPlugin implements Plugin {
 
     try {
       const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
-      const { snapshot: freshQuota, thirdRowMessage } = normalizeQuotaRead(quotaRead);
+      const { snapshot: freshQuota, thirdRowMessage, sidecarError } = normalizeQuotaRead(quotaRead);
       const missingWindows = missingQuotaWindows(freshQuota);
       this.quotaCache.update(freshQuota);
       const displayQuota = this.quotaCache.merge(freshQuota);
       const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
-      this.pushStatusRows(now, thirdRowMessage, missingWindows);
+      this.pushStatusRows(now, thirdRowMessage, sidecarError, missingWindows);
+      if (sidecarError) {
+        logAutoStartFailure(this.options.logger, sidecarError);
+      }
 
       const statusRow = this.thirdRowMessages.top(now);
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
@@ -90,9 +94,18 @@ export class CodexQuotaPlugin implements Plugin {
     };
   }
 
-  private pushStatusRows(now: Date, thirdRowMessage: string | undefined, missingWindows: ("5H" | "WK")[]): void {
+  private pushStatusRows(
+    now: Date,
+    thirdRowMessage: string | undefined,
+    sidecarError: unknown,
+    missingWindows: ("5H" | "WK")[]
+  ): void {
     if (thirdRowMessage) {
       this.thirdRowMessages.push(thirdRowMessage, statusExpiration(now));
+    }
+
+    if (sidecarError) {
+      this.thirdRowMessages.push(errorStatus(sidecarError), statusExpiration(now));
     }
 
     if (missingWindows.length > 0) {

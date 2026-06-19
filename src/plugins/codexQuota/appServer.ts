@@ -11,6 +11,16 @@ export interface CodexAppServerClient {
   waitForTurnCompletion(threadId: string, turnId: string): Promise<void>;
 }
 
+export function isMatchingTurnCompletion(
+  params: { threadId?: string; turn?: { id?: string } } | undefined,
+  threadId: string,
+  turnId: string
+): boolean {
+  const matchesThread = params?.threadId === undefined || params.threadId === threadId;
+  const matchesTurn = params?.turn?.id === turnId;
+  return matchesThread && matchesTurn;
+}
+
 export async function withCodexAppServer<T>(operation: CodexAppServerOperation<T>): Promise<T> {
   const proc = spawn("codex", ["app-server"], { stdio: ["pipe", "pipe", "inherit"] });
   if (!proc.stdin || !proc.stdout) {
@@ -80,14 +90,15 @@ export async function withCodexAppServer<T>(operation: CodexAppServerOperation<T
       }
 
       const params = message.params as { threadId?: string; turn?: { id?: string; status?: string; error?: unknown } } | undefined;
-      if (params?.threadId !== threadId || params.turn?.id !== turnId) {
+      const turn = params?.turn;
+      if (!turn || !isMatchingTurnCompletion(params, threadId, turnId)) {
         return;
       }
 
       notificationListeners.delete(listener);
       notificationRejecters.delete(reject);
-      if (params.turn.status === "failed") {
-        reject(new Error(`Codex auto-start turn failed: ${JSON.stringify(params.turn.error)}`));
+      if (turn.status === "failed") {
+        reject(new Error(`Codex auto-start turn failed: ${JSON.stringify(turn.error)}`));
       } else {
         resolve();
       }

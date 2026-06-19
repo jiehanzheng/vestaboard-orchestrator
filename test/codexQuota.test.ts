@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DemoSignalController } from "../src/demoSignals.js";
+import { isMatchingTurnCompletion } from "../src/plugins/codexQuota/appServer.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import {
   AutoStartPingState,
@@ -172,25 +173,11 @@ test("demo mode drops five-hour quota by one percentage point", () => {
       fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
     },
-    { pctDrops: 1, blockDrops: 0 }
+    { pctDrops: 1 }
   );
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.75);
   assert.equal(snapshot.weekly?.remainingRatio, 0.6);
-});
-
-test("demo mode drops five-hour quota by one rendered block", () => {
-  const snapshot = applyCodexQuotaDemo(
-    {
-      fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
-      weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
-    },
-    { pctDrops: 0, blockDrops: 1 }
-  );
-  const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
-
-  assert.equal(snapshot.fiveHour?.remainingRatio, 0.7);
-  assert.equal(message.text.split("\n")[0], "5HGGGGGGB   70%");
 });
 
 test("demo mode accumulates repeated drops", () => {
@@ -199,12 +186,12 @@ test("demo mode accumulates repeated drops", () => {
       fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
     },
-    { pctDrops: 2, blockDrops: 1 }
+    { pctDrops: 2 }
   );
   const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
 
-  assert.equal(snapshot.fiveHour?.remainingRatio, 0.6);
-  assert.equal(message.text.split("\n")[0], "5HGGGGGG    60%");
+  assert.equal(snapshot.fiveHour?.remainingRatio, 0.74);
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGB   74%");
 });
 
 test("auto-start model selection skips spark and prefers the last nano model", () => {
@@ -355,6 +342,38 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   assert.equal(first.priority, "high");
   assert.equal(retained.priority, "high");
   assert.equal(expired.priority, "normal");
+});
+
+test("app-server turn completion matching accepts events without threadId", () => {
+  assert.equal(isMatchingTurnCompletion({ turn: { id: "turn-1" } }, "thread-1", "turn-1"), true);
+  assert.equal(isMatchingTurnCompletion({ threadId: "thread-1", turn: { id: "turn-1" } }, "thread-1", "turn-1"), true);
+  assert.equal(isMatchingTurnCompletion({ threadId: "thread-2", turn: { id: "turn-1" } }, "thread-1", "turn-1"), false);
+  assert.equal(isMatchingTurnCompletion({ turn: { id: "turn-2" } }, "thread-1", "turn-1"), false);
+});
+
+test("codex plugin keeps fresh quota display when auto-start sidecar fails", async () => {
+  const warnings: unknown[][] = [];
+  const plugin = new CodexQuotaPlugin(async () => ({
+    snapshot: {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    sidecarError: new Error("model/list failed")
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn: (...args) => warnings.push(args) } });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "high");
+  assert.match(update.message.text.split("\n")[0], /^5H/);
+  assert.match(update.message.text.split("\n")[1], /^WK/);
+  assert.equal(update.message.text.split("\n")[2], "MODEL/LIST FAIL");
+  assert.equal(warnings[0]?.[0], "Codex quota auto-start failed after quota read.");
+  assert.deepEqual(warnings[0]?.[1], {
+    reason: "unknown",
+    errorName: "Error",
+    errorMessage: "model/list failed",
+    boardStatus: "MODEL/LIST FAILED"
+  });
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -645,18 +664,17 @@ test("demo signals queue mode and request a pause after the demo run", () => {
   const controller = new DemoSignalController();
 
   controller.queue("drop-1-pct", { info() {} });
-  assert.deepEqual(controller.take(), { pctDrops: 1, blockDrops: 0 });
+  assert.deepEqual(controller.take(), { pctDrops: 1 });
   assert.equal(controller.takePauseAfterRun(), true);
   assert.equal(controller.takePauseAfterRun(), false);
 
   controller.queue("drop-1-pct", { info() {} });
-  controller.queue("drop-1-color-block", { info() {} });
-  assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1 });
+  assert.deepEqual(controller.take(), { pctDrops: 2 });
 
   controller.queue("force-auto-start", { info() {} });
-  assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1, forceAutoStart: true });
+  assert.deepEqual(controller.take(), { pctDrops: 2, forceAutoStart: true });
   controller.queue("drop-1-pct", { info() {} });
-  assert.deepEqual(controller.take(), { pctDrops: 3, blockDrops: 1 });
+  assert.deepEqual(controller.take(), { pctDrops: 3 });
 });
 
 function model(name: string, reasoningEfforts: string[]) {

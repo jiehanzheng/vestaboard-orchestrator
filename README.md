@@ -95,10 +95,9 @@ The long-running process can render one realistic Codex quota demo without resta
 
 ```sh
 kill -HUP <pid>   # drop-1-pct: reduce 5H remaining quota by one percentage point
-kill -INFO <pid>  # force-auto-start: send one Codex ping and show the retained third-row ping message
-kill -USR2 <pid>  # drop-1-color-block: reduce 5H remaining quota by one rendered block
+kill -USR2 <pid>  # force-auto-start: send one Codex ping and show the retained third-row ping message
 ```
 
 Signals are cumulative for the running process. Two `SIGHUP`s render a two-point drop, and later demo signals continue from the accumulated demo offset.
 
-The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`. `SIGINFO` bypasses auto-start env flags, the 30-minute ping cooldown, and the unused-window check so the bump path and third-row retention can be tested on demand.
+The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`. `SIGUSR2` bypasses auto-start env flags, the 30-minute ping cooldown, and the unused-window check so the bump path and third-row retention can be tested on demand.

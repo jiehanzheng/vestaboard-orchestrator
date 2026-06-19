@@ -71,17 +71,24 @@ async function readCodexQuotaWithSidecar(
   return withCodexAppServer(async (client) => {
     const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
     const snapshot = quotaFromRateLimits(rateLimits);
-    const autoStart = await autoStartSidecar.afterQuotaRead({
-      client,
-      snapshot,
-      force: options.forceAutoStart === true,
-      now: options.now ?? new Date()
-    });
+    try {
+      const autoStart = await autoStartSidecar.afterQuotaRead({
+        client,
+        snapshot,
+        force: options.forceAutoStart === true,
+        now: options.now ?? new Date()
+      });
 
-    return {
-      snapshot,
-      thirdRowMessage: autoStart.statusMessage
-    };
+      return {
+        snapshot,
+        thirdRowMessage: autoStart.statusMessage
+      };
+    } catch (sidecarError) {
+      return {
+        snapshot,
+        sidecarError
+      };
+    }
   });
 }
 
