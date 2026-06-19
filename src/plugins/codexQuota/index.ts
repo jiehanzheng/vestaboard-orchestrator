@@ -74,6 +74,7 @@ interface QuotaReadResult {
 
 type QuotaReader = (options?: QuotaReadOptions) => Promise<QuotaSnapshot | QuotaReadResult>;
 type QuotaRowName = "5H" | "WK";
+type AutoStartWindowId = "fiveHour" | "weekly";
 type Logger = Pick<Console, "warn">;
 type CodexAppServerOperation<T> = (client: CodexAppServerClient) => Promise<T>;
 
@@ -206,17 +207,17 @@ export function createCodexQuotaPlugin({
   return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, logger, now });
 }
 
-const autoStartedWindowKeys = new Set<string>();
-let lastAutoStartPingAt: Date | undefined;
-
 function createCodexQuotaReader(autoStartWindows: AutoStartWindows): QuotaReader {
-  return async (options) => readCodexQuotaWithAutoStart(autoStartWindows, options);
+  const autoStartState = new AutoStartPingState();
+  return async (options) => readCodexQuotaWithAutoStart(autoStartWindows, autoStartState, options);
 }
 
-interface AutoStartWindows {
+interface AutoStartQuotaConfig {
   fiveHour: boolean;
   weekly: boolean;
 }
+
+type AutoStartWindows = AutoStartQuotaConfig;
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
   return withCodexAppServer(async (client) => {
@@ -229,11 +230,15 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
   return withCodexAppServer((client) => client.request<RateLimitsResult>("account/rateLimits/read"));
 }
 
-async function readCodexQuotaWithAutoStart(autoStartWindows: AutoStartWindows, options: QuotaReadOptions = {}): Promise<QuotaReadResult> {
+async function readCodexQuotaWithAutoStart(
+  autoStartConfig: AutoStartQuotaConfig,
+  autoStartState: AutoStartPingState,
+  options: QuotaReadOptions = {}
+): Promise<QuotaReadResult> {
   return withCodexAppServer(async (client) => {
     const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
     const snapshot = quotaFromRateLimits(rateLimits);
-    const autoStart = await autoStartUnusedQuotaWindows(client, snapshot, autoStartWindows, options);
+    const autoStart = await maybeSendAutoStartPing(client, snapshot, autoStartConfig, autoStartState, options);
     return {
       snapshot,
       thirdRowMessage: autoStart ? autoStartPingMessage(autoStart) : undefined
@@ -241,54 +246,96 @@ async function readCodexQuotaWithAutoStart(autoStartWindows: AutoStartWindows, o
   });
 }
 
-async function autoStartUnusedQuotaWindows(
+async function maybeSendAutoStartPing(
   client: CodexAppServerClient,
   snapshot: QuotaSnapshot,
-  autoStartWindows: AutoStartWindows,
+  autoStartConfig: AutoStartQuotaConfig,
+  autoStartState: AutoStartPingState,
   options: QuotaReadOptions
 ): Promise<{ model: string; reasoningEffort: string } | undefined> {
-  const forceAutoStart = options.forceAutoStart === true;
-  const windowKeys = forceAutoStart
-    ? ["FORCE"]
-    : unusedAutoStartWindowKeys(snapshot, autoStartWindows).filter((key) => !autoStartedWindowKeys.has(key));
-
-  if (windowKeys.length === 0) {
-    return undefined;
-  }
-
-  if (!forceAutoStart && pingInCooldown(new Date())) {
+  const now = new Date();
+  const plan = autoStartState.plan(snapshot, autoStartConfig, { force: options.forceAutoStart === true, now });
+  if (plan.type === "skip") {
     return undefined;
   }
 
   const models = await readAllModels(client);
   const selection = selectAutoStartModel(models);
   await sendAutoStartPrompt(client, selection);
-  lastAutoStartPingAt = new Date();
-
-  for (const key of windowKeys) {
-    autoStartedWindowKeys.add(key);
-  }
-
+  autoStartState.recordSuccess(plan, new Date());
   return selection;
-}
-
-export function unusedAutoStartWindowKeys(snapshot: QuotaSnapshot, autoStartWindows: AutoStartWindows): string[] {
-  return [
-    autoStartWindows.fiveHour && isUnusedQuotaWindow(snapshot.fiveHour) ? autoStartWindowKey("5H", snapshot.fiveHour) : undefined,
-    autoStartWindows.weekly && isUnusedQuotaWindow(snapshot.weekly) ? autoStartWindowKey("WK", snapshot.weekly) : undefined
-  ].filter((key): key is string => key !== undefined);
 }
 
 function isUnusedQuotaWindow(window: QuotaWindow | undefined): window is QuotaWindow {
   return window !== undefined && clamp(window.remainingRatio) >= 1;
 }
 
-function autoStartWindowKey(row: QuotaRowName, window: QuotaWindow): string {
-  return `${row}:${window.resetAt.toISOString()}`;
+export interface AutoStartWindowCandidate {
+  id: AutoStartWindowId;
+  row: QuotaRowName;
+  resetAtMs: number;
 }
 
-function pingInCooldown(now: Date): boolean {
-  return lastAutoStartPingAt !== undefined && now.getTime() - lastAutoStartPingAt.getTime() < AUTO_START_PING_COOLDOWN_MS;
+type AutoStartPingPlan =
+  | { type: "skip"; reason: "no-eligible-window" | "cooldown" }
+  | { type: "ping"; trigger: "force"; windows: [] }
+  | { type: "ping"; trigger: "unused-quota"; windows: AutoStartWindowCandidate[] };
+
+export class AutoStartPingState {
+  private lastSuccessfulPingAtMs: number | undefined;
+  private pingedResetAtMsByWindow: Partial<Record<AutoStartWindowId, number>> = {};
+
+  plan(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig, options: { force: boolean; now: Date }): AutoStartPingPlan {
+    if (options.force) {
+      return { type: "ping", trigger: "force", windows: [] };
+    }
+
+    if (this.isInCooldown(options.now)) {
+      return { type: "skip", reason: "cooldown" };
+    }
+
+    const windows = this.eligibleWindows(snapshot, config);
+    return windows.length > 0
+      ? { type: "ping", trigger: "unused-quota", windows }
+      : { type: "skip", reason: "no-eligible-window" };
+  }
+
+  recordSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
+    this.lastSuccessfulPingAtMs = now.getTime();
+    if (plan.trigger === "force") {
+      return;
+    }
+
+    for (const window of plan.windows) {
+      this.pingedResetAtMsByWindow[window.id] = window.resetAtMs;
+    }
+  }
+
+  private isInCooldown(now: Date): boolean {
+    return this.lastSuccessfulPingAtMs !== undefined
+      && now.getTime() - this.lastSuccessfulPingAtMs < AUTO_START_PING_COOLDOWN_MS;
+  }
+
+  private eligibleWindows(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig): AutoStartWindowCandidate[] {
+    return [
+      this.windowCandidate("fiveHour", "5H", config.fiveHour, snapshot.fiveHour),
+      this.windowCandidate("weekly", "WK", config.weekly, snapshot.weekly)
+    ].filter((window): window is AutoStartWindowCandidate => window !== undefined);
+  }
+
+  private windowCandidate(
+    id: AutoStartWindowId,
+    row: QuotaRowName,
+    enabled: boolean,
+    window: QuotaWindow | undefined
+  ): AutoStartWindowCandidate | undefined {
+    if (!enabled || !isUnusedQuotaWindow(window)) {
+      return undefined;
+    }
+
+    const resetAtMs = window.resetAt.getTime();
+    return this.pingedResetAtMsByWindow[id] === resetAtMs ? undefined : { id, row, resetAtMs };
+  }
 }
 
 function autoStartPingMessage(selection: { model: string; reasoningEffort: string }): string {

@@ -4,12 +4,12 @@ import test from "node:test";
 import { DemoSignalController } from "../src/demoSignals.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import {
+  AutoStartPingState,
   CodexQuotaPlugin,
   formatError,
   formatQuota,
   quotaFromRateLimits,
-  selectAutoStartModel,
-  unusedAutoStartWindowKeys
+  selectAutoStartModel
 } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 
@@ -240,25 +240,95 @@ test("auto-start model selection falls back to mini and then the last filtered m
   });
 });
 
-test("auto-start gating is specific to enabled unused quota windows", () => {
-  const snapshot = {
-    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
-    weekly: { remainingRatio: 0.99, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-  };
+test("auto-start planner selects enabled unused windows and skips disabled or used windows", () => {
+  const state = new AutoStartPingState();
+  const now = new Date("2026-06-19T00:00:00-07:00");
 
-  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: false }), []);
-  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: true, weekly: false }), ["5H:2026-06-19T09:44:00.000Z"]);
-  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: true }), []);
+  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: false, weekly: false }, { force: false, now }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
+  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: true, weekly: false }, { force: false, now }), {
+    type: "ping",
+    trigger: "unused-quota",
+    windows: [{ id: "fiveHour", row: "5H", resetAtMs: new Date("2026-06-19T09:44:00.000Z").getTime() }]
+  });
+  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 0.99, weekly: 1 }), { fiveHour: true, weekly: false }, { force: false, now }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
 });
 
-test("auto-start gating can target only the unused weekly quota window", () => {
-  const snapshot = {
-    fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
-    weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-  };
+test("auto-start planner records successful windows and allows a newer reset timestamp", () => {
+  const state = new AutoStartPingState();
+  const firstNow = new Date("2026-06-19T00:00:00-07:00");
+  const first = state.plan(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: firstNow });
+  assert.equal(first.type, "ping");
+  assert.equal(first.type === "ping" ? first.windows.length : 0, 2);
 
-  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: true, weekly: false }), []);
-  assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: true }), ["WK:2026-06-24T21:19:00.000Z"]);
+  if (first.type === "ping") {
+    state.recordSuccess(first, firstNow);
+  }
+
+  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
+
+  const newer = state.plan({
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  }, { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") });
+
+  assert.deepEqual(newer, {
+    type: "ping",
+    trigger: "unused-quota",
+    windows: [{ id: "fiveHour", row: "5H", resetAtMs: new Date("2026-06-19T14:44:00.000Z").getTime() }]
+  });
+});
+
+test("auto-start planner applies cooldown only after successful pings", () => {
+  const state = new AutoStartPingState();
+  const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.5 });
+  const now = new Date("2026-06-19T00:00:00-07:00");
+  const first = state.plan(snapshot, { fiveHour: true, weekly: false }, { force: false, now });
+  assert.equal(first.type, "ping");
+  assert.equal(state.plan(snapshot, { fiveHour: true, weekly: false }, { force: false, now }).type, "ping");
+
+  if (first.type === "ping") {
+    state.recordSuccess(first, now);
+  }
+
+  assert.deepEqual(state.plan({
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 }
+  }, { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:29:59-07:00") }), {
+    type: "skip",
+    reason: "cooldown"
+  });
+  assert.equal(state.plan({
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 }
+  }, { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }).type, "ping");
+});
+
+test("auto-start planner force mode bypasses flags quota records and cooldown without marking windows", () => {
+  const state = new AutoStartPingState();
+  const firstNow = new Date("2026-06-19T00:00:00-07:00");
+  const normal = state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: firstNow });
+  assert.equal(normal.type, "ping");
+  if (normal.type === "ping") {
+    state.recordSuccess(normal, firstNow);
+  }
+
+  const force = state.plan(quotaSnapshot({ fiveHour: 0.8, weekly: 0.4 }), { fiveHour: false, weekly: false }, { force: true, now: new Date("2026-06-19T00:01:00-07:00") });
+  assert.deepEqual(force, { type: "ping", trigger: "force", windows: [] });
+  if (force.type === "ping") {
+    state.recordSuccess(force, new Date("2026-06-19T00:01:00-07:00"));
+  }
+
+  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
 });
 
 test("codex plugin retains ping third-row messages until expiration", async () => {
@@ -594,5 +664,16 @@ function model(name: string, reasoningEfforts: string[]) {
     id: name,
     model: name,
     supportedReasoningEfforts: reasoningEfforts.map((reasoningEffort) => ({ reasoningEffort }))
+  };
+}
+
+function quotaSnapshot({ fiveHour, weekly }: { fiveHour?: number; weekly?: number }) {
+  return {
+    fiveHour: fiveHour === undefined
+      ? undefined
+      : { remainingRatio: fiveHour, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: weekly === undefined
+      ? undefined
+      : { remainingRatio: weekly, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
   };
 }
