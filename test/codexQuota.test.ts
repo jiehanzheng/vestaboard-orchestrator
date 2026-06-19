@@ -261,6 +261,29 @@ test("auto-start gating can target only the unused weekly quota window", () => {
   assert.deepEqual(unusedAutoStartWindowKeys(snapshot, { fiveHour: false, weekly: true }), ["WK:2026-06-24T21:19:00.000Z"]);
 });
 
+test("codex plugin retains ping third-row messages until expiration", async () => {
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  let reads = 0;
+  const snapshot = {
+    fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  };
+  const plugin = new CodexQuotaPlugin(async () => {
+    reads += 1;
+    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt-5.4-minilow" } : snapshot;
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
+
+  const first = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:04:00-07:00");
+  const retained = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:06:00-07:00");
+  const expired = await plugin.getUpdate();
+
+  assert.equal(first.message.text.split("\n")[2], "PING GPT 5 4 MI");
+  assert.equal(retained.message.text.split("\n")[2], "PING GPT 5 4 MI");
+  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
+});
+
 test("codex plugin returns low-priority error message when quota read fails", async () => {
   const warnings: unknown[][] = [];
   const plugin = new CodexQuotaPlugin(async () => {
@@ -370,6 +393,35 @@ test("codex plugin recomputes cached ingredients instead of reusing rendered mes
 
   assert.notEqual(fallback.message.text.split("\n")[0], good.message.text.split("\n")[0]);
   assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
+});
+
+test("codex plugin retains transient error status after the next successful read", async () => {
+  let fail = false;
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      fail = false;
+      throw new Error("Codex app-server timed out after 10000ms.");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
+
+  await plugin.getUpdate();
+  fail = true;
+  now = new Date("2026-06-19T00:01:00-07:00");
+  const error = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:02:00-07:00");
+  const retained = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:07:00-07:00");
+  const expired = await plugin.getUpdate();
+
+  assert.equal(error.message.text.split("\n")[2], "TIMEOUT        ");
+  assert.equal(retained.message.text.split("\n")[2], "TIMEOUT        ");
+  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
 });
 
 test("codex plugin renders missing row placeholder when no cached ingredient exists", async () => {
@@ -524,6 +576,11 @@ test("demo signals queue mode and request a pause after the demo run", () => {
   controller.queue("drop-1-pct", { info() {} });
   controller.queue("drop-1-color-block", { info() {} });
   assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1 });
+
+  controller.queue("force-auto-start", { info() {} });
+  assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1, forceAutoStart: true });
+  controller.queue("drop-1-pct", { info() {} });
+  assert.deepEqual(controller.take(), { pctDrops: 3, blockDrops: 1 });
 });
 
 function model(name: string, reasoningEfforts: string[]) {

@@ -63,7 +63,16 @@ export interface QuotaWindow {
   durationMins: number;
 }
 
-type QuotaReader = () => Promise<QuotaSnapshot>;
+interface QuotaReadOptions {
+  forceAutoStart?: boolean;
+}
+
+interface QuotaReadResult {
+  snapshot: QuotaSnapshot;
+  thirdRowMessage?: string;
+}
+
+type QuotaReader = (options?: QuotaReadOptions) => Promise<QuotaSnapshot | QuotaReadResult>;
 type QuotaRowName = "5H" | "WK";
 type Logger = Pick<Console, "warn">;
 type CodexAppServerOperation<T> = (client: CodexAppServerClient) => Promise<T>;
@@ -80,10 +89,13 @@ const FIVE_HOUR_MINS = 300;
 const WEEKLY_MINS = 10_080;
 const AUTO_START_BASE_INSTRUCTIONS = "Obey exactly.";
 const AUTO_START_PROMPT = "Reply exactly: ok. Do not inspect files or run commands.";
+const THIRD_ROW_MESSAGE_TTL_MS = 5 * 60_000;
+const AUTO_START_PING_COOLDOWN_MS = 30 * 60_000;
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
   private readonly quotaCache = new QuotaIngredientCache();
+  private readonly thirdRowMessages = new ThirdRowMessageStack();
 
   constructor(
     private readonly readQuota: QuotaReader,
@@ -98,17 +110,28 @@ export class CodexQuotaPlugin implements Plugin {
   ) {}
 
   async getUpdate(): Promise<PluginUpdate> {
+    const now = this.options.now?.() ?? new Date();
+    const demoMode = this.options.takeDemoMode?.();
+
     try {
-      const freshQuota = await this.readQuota();
+      const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart });
+      const { snapshot: freshQuota, thirdRowMessage } = normalizeQuotaRead(quotaRead);
       const missingWindows = missingQuotaWindows(freshQuota);
       this.quotaCache.update(freshQuota);
       const displayQuota = this.quotaCache.merge(freshQuota);
       const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
-      const demoMode = this.options.takeDemoMode?.();
+      if (thirdRowMessage) {
+        this.thirdRowMessages.push(thirdRowMessage, new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS));
+      }
+
+      if (missingWindows.length > 0) {
+        this.thirdRowMessages.push(missingStatus(missingWindows), new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS));
+      }
+
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
-        now: this.options.now?.(),
-        statusRow: missingWindows.length > 0 ? missingStatus(missingWindows) : undefined,
+        now,
+        statusRow: this.thirdRowMessages.top(now),
         staleRows
       });
 
@@ -122,11 +145,13 @@ export class CodexQuotaPlugin implements Plugin {
       };
     } catch (error) {
       const cachedQuota = this.quotaCache.snapshot();
+      const status = errorStatus(error);
+      this.thirdRowMessages.push(status, new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS));
       const message = this.quotaCache.hasAny()
         ? formatQuota(cachedQuota, {
             timeZone: this.options.timeZone,
-            now: this.options.now?.(),
-            statusRow: errorStatus(error),
+            now,
+            statusRow: this.thirdRowMessages.top(now),
             staleRows: cachedRowsPresentIn(cachedQuota)
           })
         : formatError(error);
@@ -171,9 +196,10 @@ export function createCodexQuotaPlugin({
 }
 
 const autoStartedWindowKeys = new Set<string>();
+let lastAutoStartPingAt: Date | undefined;
 
 function createCodexQuotaReader(autoStartWindows: AutoStartWindows): QuotaReader {
-  return async () => readCodexQuotaWithAutoStart(autoStartWindows);
+  return async (options) => readCodexQuotaWithAutoStart(autoStartWindows, options);
 }
 
 interface AutoStartWindows {
@@ -192,32 +218,47 @@ export async function readRateLimits(): Promise<RateLimitsResult> {
   return withCodexAppServer((client) => client.request<RateLimitsResult>("account/rateLimits/read"));
 }
 
-async function readCodexQuotaWithAutoStart(autoStartWindows: AutoStartWindows): Promise<QuotaSnapshot> {
+async function readCodexQuotaWithAutoStart(autoStartWindows: AutoStartWindows, options: QuotaReadOptions = {}): Promise<QuotaReadResult> {
   return withCodexAppServer(async (client) => {
     const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
     const snapshot = quotaFromRateLimits(rateLimits);
-    await autoStartUnusedQuotaWindows(client, snapshot, autoStartWindows);
-    return snapshot;
+    const autoStart = await autoStartUnusedQuotaWindows(client, snapshot, autoStartWindows, options);
+    return {
+      snapshot,
+      thirdRowMessage: autoStart ? autoStartPingMessage(autoStart) : undefined
+    };
   });
 }
 
 async function autoStartUnusedQuotaWindows(
   client: CodexAppServerClient,
   snapshot: QuotaSnapshot,
-  autoStartWindows: AutoStartWindows
-): Promise<void> {
-  const windowKeys = unusedAutoStartWindowKeys(snapshot, autoStartWindows).filter((key) => !autoStartedWindowKeys.has(key));
+  autoStartWindows: AutoStartWindows,
+  options: QuotaReadOptions
+): Promise<{ model: string; reasoningEffort: string } | undefined> {
+  const forceAutoStart = options.forceAutoStart === true;
+  const windowKeys = forceAutoStart
+    ? ["FORCE"]
+    : unusedAutoStartWindowKeys(snapshot, autoStartWindows).filter((key) => !autoStartedWindowKeys.has(key));
+
   if (windowKeys.length === 0) {
-    return;
+    return undefined;
+  }
+
+  if (!forceAutoStart && pingInCooldown(new Date())) {
+    return undefined;
   }
 
   const models = await readAllModels(client);
   const selection = selectAutoStartModel(models);
   await sendAutoStartPrompt(client, selection);
+  lastAutoStartPingAt = new Date();
 
   for (const key of windowKeys) {
     autoStartedWindowKeys.add(key);
   }
+
+  return selection;
 }
 
 export function unusedAutoStartWindowKeys(snapshot: QuotaSnapshot, autoStartWindows: AutoStartWindows): string[] {
@@ -233,6 +274,14 @@ function isUnusedQuotaWindow(window: QuotaWindow | undefined): window is QuotaWi
 
 function autoStartWindowKey(row: QuotaRowName, window: QuotaWindow): string {
   return `${row}:${window.resetAt.toISOString()}`;
+}
+
+function pingInCooldown(now: Date): boolean {
+  return lastAutoStartPingAt !== undefined && now.getTime() - lastAutoStartPingAt.getTime() < AUTO_START_PING_COOLDOWN_MS;
+}
+
+function autoStartPingMessage(selection: { model: string; reasoningEffort: string }): string {
+  return `ping ${selection.model}${selection.reasoningEffort}`;
 }
 
 async function readAllModels(client: CodexAppServerClient): Promise<CodexModel[]> {
@@ -537,6 +586,37 @@ interface QuotaCacheState {
   hasFiveHour: boolean;
   hasWeekly: boolean;
   updatedAt?: string;
+}
+
+function normalizeQuotaRead(result: QuotaSnapshot | QuotaReadResult): QuotaReadResult {
+  if ("snapshot" in result) {
+    return result;
+  }
+
+  return { snapshot: result };
+}
+
+interface ThirdRowMessage {
+  message: string;
+  expiresAt: Date;
+}
+
+class ThirdRowMessageStack {
+  private messages: ThirdRowMessage[] = [];
+
+  push(message: string, expiresAt: Date): void {
+    this.messages.push({ message, expiresAt: new Date(expiresAt) });
+  }
+
+  top(now: Date): string | undefined {
+    this.prune(now);
+    return this.messages.at(-1)?.message;
+  }
+
+  private prune(now: Date): void {
+    const nowMs = now.getTime();
+    this.messages = this.messages.filter((message) => message.expiresAt.getTime() > nowMs);
+  }
 }
 
 class QuotaIngredientCache {

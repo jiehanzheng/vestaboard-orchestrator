@@ -77,7 +77,9 @@ The percentage shows remaining quota, derived from `100 - usedPercent`. Full quo
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
 
-When an auto-start flag is enabled and its quota window is unused, the plugin lists visible Codex models, removes `-spark` models, prefers the last `-nano` model, then the last `-mini` model, then the last remaining model. It uses that model's first supported reasoning level and sends `Reply exactly: ok. Do not inspect files or run commands.` in an ephemeral read-only thread. A running process auto-starts at most once per reset timestamp.
+The third row is backed by a short-lived message stack. Current-cycle statuses such as transient Codex read errors and auto-start ping notices are pushed with an expiration, expired messages are pruned each tick, and the topmost unexpired message is shown before falling back to the reset row.
+
+When an auto-start flag is enabled and its quota window is unused, the plugin lists visible Codex models, removes `-spark` models, prefers the last `-nano` model, then the last `-mini` model, then the last remaining model. It uses that model's first supported reasoning level and sends `Reply exactly: ok. Do not inspect files or run commands.` in an ephemeral read-only thread. A running process auto-starts at most once per reset timestamp and never pings more than once every 30 minutes unless forced by signal. Successful pings push a 5-minute third-row message like `ping gpt-5.4-minilow`, truncated to the 15-character Vestaboard row.
 
 Each plugin returns priority and message together in one call, so the Codex quota plugin runs `codex app-server` at most once per orchestrator tick. If Codex times out, returns malformed JSON, or returns an unexpected quota shape, the plugin returns a lower-priority error message for the board instead of throwing. After the first successful quota read, the plugin caches parsed quota ingredients and can use them to render stale 5H/WK rows with a short status on the reset row during intermittent Codex failures.
 
@@ -93,9 +95,10 @@ The long-running process can render one realistic Codex quota demo without resta
 
 ```sh
 kill -HUP <pid>   # drop-1-pct: reduce 5H remaining quota by one percentage point
+kill -INFO <pid>  # force-auto-start: send one Codex ping and show the retained third-row ping message
 kill -USR2 <pid>  # drop-1-color-block: reduce 5H remaining quota by one rendered block
 ```
 
 Signals are cumulative for the running process. Two `SIGHUP`s render a two-point drop, and later demo signals continue from the accumulated demo offset.
 
-The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`.
+The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`. `SIGINFO` bypasses auto-start env flags, the 30-minute ping cooldown, and the unused-window check so the bump path and third-row retention can be tested on demand.

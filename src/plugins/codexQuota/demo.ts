@@ -1,10 +1,11 @@
 import type { QuotaSnapshot, QuotaWindow } from "./index.js";
 
-export type CodexQuotaDemoMode = "drop-1-pct" | "drop-1-color-block";
+export type CodexQuotaDemoMode = "drop-1-pct" | "drop-1-color-block" | "force-auto-start";
 
 export interface CodexQuotaDemoState {
   pctDrops: number;
   blockDrops: number;
+  forceAutoStart?: boolean;
 }
 
 const BAR_WIDTH = 10;
