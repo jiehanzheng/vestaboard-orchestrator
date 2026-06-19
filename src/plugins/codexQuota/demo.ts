@@ -1,4 +1,4 @@
-import type { QuotaSnapshot, QuotaWindow } from "./index.js";
+import type { QuotaSnapshot, QuotaWindow } from "./types.js";
 
 export type CodexQuotaDemoMode = "drop-1-pct" | "drop-1-color-block" | "force-auto-start";
 
