@@ -164,7 +164,7 @@ function isUnusedQuotaWindow(window: QuotaWindow | undefined): window is QuotaWi
 }
 
 function autoStartPingMessage(selection: { model: string; reasoningEffort: string }): string {
-  return `ping ${selection.model}${selection.reasoningEffort}`;
+  return `ping ${selection.model.replaceAll("-", "")}${selection.reasoningEffort}`;
 }
 
 async function readAllModels(client: CodexAppServerClient): Promise<CodexModel[]> {

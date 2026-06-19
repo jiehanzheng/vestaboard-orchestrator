@@ -8,6 +8,29 @@ const BLUE = 67;
 const HEART = 62;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
+const PUNCTUATION_CODES: Record<string, number> = {
+  "!": 37,
+  "@": 38,
+  "#": 39,
+  "$": 40,
+  "(": 41,
+  ")": 42,
+  "-": 44,
+  "+": 46,
+  "&": 47,
+  "=": 48,
+  ";": 49,
+  ":": 50,
+  "'": 52,
+  "\"": 53,
+  "%": 54,
+  ",": 55,
+  ".": 56,
+  "/": 59,
+  "?": 60,
+  "°": 62,
+  "♥": HEART
+};
 
 export function formatQuota(
   snapshot: QuotaSnapshot,
@@ -142,11 +165,8 @@ function encode(text: string): number[] {
 
 function charCode(char: string): number {
   if (char === " ") return BLANK;
-  if (char === "♥") return HEART;
-  if (char === "%") return 54;
-  if (char === "-") return 44;
-  if (char === "/") return 59;
-  if (char === "?") return 60;
+  const punctuationCode = PUNCTUATION_CODES[char];
+  if (punctuationCode !== undefined) return punctuationCode;
 
   const code = char.toUpperCase().charCodeAt(0);
   if (code >= 65 && code <= 90) return code - 64;
@@ -157,7 +177,7 @@ function charCode(char: string): number {
 }
 
 function sanitizeError(message: string): string {
-  return message.toUpperCase().replace(/[^A-Z0-9 /%]/g, " ").replace(/\s+/g, " ").trim();
+  return message.toUpperCase().replace(/[^A-Z0-9 !@#$()+&=;:'"%.,/?°♥-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function clamp(value: number): number {

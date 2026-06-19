@@ -76,6 +76,38 @@ test("renders remaining quota as green Vestaboard Note character codes", () => {
   assert.equal(message.characters?.every((row) => row.length === 15), true);
 });
 
+test("renders documented Vestaboard punctuation character codes", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    {
+      now: new Date("2026-06-18T21:44:00-07:00"),
+      statusRow: "!@#$()-+&=;:'\""
+    }
+  );
+
+  assert.equal(message.text.split("\n")[2], "!@#$()-+&=;:'\" ");
+  assert.deepEqual(message.characters?.[2], [37, 38, 39, 40, 41, 42, 44, 46, 47, 48, 49, 50, 52, 53, 0]);
+});
+
+test("renders documented comma period degree and heart character codes", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    {
+      now: new Date("2026-06-18T21:44:00-07:00"),
+      statusRow: "punct,./?°♥"
+    }
+  );
+
+  assert.equal(message.text.split("\n")[2], "PUNCT,./?°♥    ");
+  assert.deepEqual(message.characters?.[2], [16, 21, 14, 3, 20, 55, 56, 59, 60, 62, 62, 0, 0, 0, 0]);
+});
+
 test("renders full quota as 100 while preserving row width", () => {
   const message = formatQuota(
     {
@@ -328,7 +360,7 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   };
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
-    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt-5.4-minilow" } : snapshot;
+    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt5.4minilow" } : snapshot;
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
 
   const first = await plugin.getUpdate();
@@ -337,8 +369,9 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   now = new Date("2026-06-19T00:06:00-07:00");
   const expired = await plugin.getUpdate();
 
-  assert.equal(first.message.text.split("\n")[2], "PING GPT 5 4 MI");
-  assert.equal(retained.message.text.split("\n")[2], "PING GPT 5 4 MI");
+  assert.equal(first.message.text.split("\n")[2], "PING GPT5.4MINI");
+  assert.equal(retained.message.text.split("\n")[2], "PING GPT5.4MINI");
+  assert.deepEqual(first.message.characters?.[2], [16, 9, 14, 7, 0, 7, 16, 20, 31, 56, 30, 13, 9, 14, 9]);
   assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
   assert.equal(first.priority, "high");
   assert.equal(retained.priority, "high");
@@ -382,13 +415,14 @@ test("auto-start sidecar starts read-only threads without cwd", async () => {
     async waitForTurnCompletion() {}
   };
 
-  await sidecar.afterQuotaRead({
+  const result = await sidecar.afterQuotaRead({
     client,
     snapshot: quotaSnapshot({ fiveHour: 0.4, weekly: 0.2 }),
     force: true,
     now: new Date("2026-06-19T00:00:00-07:00")
   });
 
+  assert.equal(result.statusMessage, "ping gpt5.4minilow");
   assert.equal(threadStartParams?.sandbox, "read-only");
   assert.equal(Object.hasOwn(threadStartParams ?? {}, "cwd"), false);
 });
