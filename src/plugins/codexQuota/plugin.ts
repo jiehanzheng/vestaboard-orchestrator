@@ -2,6 +2,7 @@ import type { Plugin, PluginUpdate, Priority } from "../../orchestrator.js";
 import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
 import { formatError, formatQuota } from "./display.js";
 import {
+  autoStartErrorStatus,
   bumpThirdRowPriority,
   cachedRowsPresentIn,
   cachedRowsUsedFor,
@@ -116,7 +117,7 @@ export class CodexQuotaPlugin implements Plugin {
     }
 
     if (sidecarError) {
-      this.thirdRowMessages.push(errorStatus(sidecarError), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
+      this.thirdRowMessages.push(autoStartErrorStatus(), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
     }
 
     if (missingWindows.length > 0) {

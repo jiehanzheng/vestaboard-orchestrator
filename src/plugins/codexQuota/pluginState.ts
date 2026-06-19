@@ -122,6 +122,10 @@ export function errorStatus(error: unknown): string {
   return summarizeBoardError(sanitizeDisplayText(detail));
 }
 
+export function autoStartErrorStatus(): string {
+  return "AUTO PING FAIL";
+}
+
 export function logQuotaReadFailure(
   logger: Logger | undefined,
   error: unknown,
@@ -158,7 +162,7 @@ export function logAutoStartFailure(logger: Logger | undefined, error: unknown):
     reason: summarizeFailure(error),
     errorName: error instanceof Error ? error.name : typeof error,
     errorMessage: error instanceof Error ? error.message : String(error),
-    boardStatus: errorStatus(error)
+    boardStatus: autoStartErrorStatus()
   });
 }
 
@@ -185,7 +189,7 @@ function summarizeBoardError(message: string): string {
   if (message.includes("COULD NOT START")) return "START";
   if (message.includes("RATE LIMIT")) return "RATE LIMIT";
   if (message.includes("BUBBLEWRAP")) return "BWRAP";
-  return message.split(" ").filter(Boolean).slice(0, 2).join(" ") || "CODEX";
+  return "FETCH FAIL";
 }
 
 function messagePreview(message: VestaboardMessage): string {
