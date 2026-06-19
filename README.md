@@ -2,6 +2,8 @@
 
 A small TypeScript service that asks plugins for priority, renders the highest-priority plugin, and sends the message to Vestaboard.
 
+<img width="867" height="309" alt="image" src="https://github.com/user-attachments/assets/a4d852ab-f5b4-48ae-bd7e-715e501e3de6" />
+
 ## Run
 
 ```sh
