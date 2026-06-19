@@ -2,7 +2,8 @@ import type { Priority, VestaboardMessage } from "../../orchestrator.js";
 import { sanitizeDisplayText } from "./display.js";
 import type { Logger, QuotaPollResult, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
 
-export const THIRD_ROW_MESSAGE_TTL_MS = 5 * 60_000;
+export const REFRESH_THIRD_ROW_MESSAGE_TTL_MS = 5 * 60_000;
+export const TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS = 1_000;
 
 const THIRD_ROW_PRIORITY = "high";
 const PRIORITY_VALUES: Record<string, number> = {
@@ -35,8 +36,8 @@ export function normalizeQuotaRead(result: QuotaSnapshot | QuotaPollResult): Quo
 export class ThirdRowMessageStack {
   private messages: ThirdRowMessage[] = [];
 
-  push(message: string, expiresAt: Date): void {
-    this.messages.push({ message, expiresAt: new Date(expiresAt) });
+  push(message: string, now: Date, ttlMs: number): void {
+    this.messages.push({ message, expiresAt: new Date(now.getTime() + ttlMs) });
   }
 
   top(now: Date): string | undefined {

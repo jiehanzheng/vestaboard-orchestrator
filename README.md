@@ -77,7 +77,7 @@ The percentage shows remaining quota, derived from `100 - usedPercent`. Full quo
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
 
-The third row is backed by a short-lived message stack. Current-cycle statuses such as transient Codex read errors and auto-start ping notices are pushed with an expiration, expired messages are pruned each tick, and the topmost unexpired message is shown before falling back to the reset row.
+The third row is backed by a short-lived message stack. Current-cycle statuses get message-specific expirations: transient Codex read errors and incomplete fetch statuses expire after 1 second, while auto-start ping notices stay visible for 5 minutes. Expired messages are pruned each tick, and the topmost unexpired message is shown before falling back to the reset row.
 
 When the weekly quota row is exhausted at 0% and `account/rateLimits/read` reports `rateLimitResetCredits.availableCount > 0`, the third row shows `RESET AVAILABLE`. The plugin only displays this read-only account status; it does not invoke or claim a reset.
 

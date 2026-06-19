@@ -462,6 +462,28 @@ test("codex plugin shows reset available when weekly quota is exhausted and rese
   assert.equal(update.message.text.split("\n")[2], "RESET AVAILABLE");
 });
 
+test("codex plugin does not retain reset available after a later fetch omits reset credits", async () => {
+  let reads = 0;
+  const plugin = new CodexQuotaPlugin(async () => {
+    reads += 1;
+    return {
+      snapshot: {
+        fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+        weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+      },
+      rateLimitResetCreditsAvailableCount: reads === 1 ? 1 : 0
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
+
+  const first = await plugin.getUpdate();
+  const second = await plugin.getUpdate();
+
+  assert.equal(first.priority, "high");
+  assert.equal(first.message.text.split("\n")[2], "RESET AVAILABLE");
+  assert.equal(second.priority, "normal");
+  assert.equal(second.message.text.split("\n")[2], "0244♥06/24♥1419");
+});
+
 test("codex plugin does not show reset available when weekly quota remains", async () => {
   const plugin = new CodexQuotaPlugin(async () => ({
     snapshot: {
@@ -588,7 +610,7 @@ test("codex plugin recomputes cached ingredients instead of reusing rendered mes
   assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
 });
 
-test("codex plugin retains transient error status after the next successful read", async () => {
+test("codex plugin expires transient error status after the next successful read", async () => {
   let fail = false;
   let now = new Date("2026-06-19T00:00:00-07:00");
   const plugin = new CodexQuotaPlugin(async () => {
@@ -607,9 +629,9 @@ test("codex plugin retains transient error status after the next successful read
   fail = true;
   now = new Date("2026-06-19T00:01:00-07:00");
   const error = await plugin.getUpdate();
-  now = new Date("2026-06-19T00:02:00-07:00");
+  now = new Date("2026-06-19T00:01:00.500-07:00");
   const retained = await plugin.getUpdate();
-  now = new Date("2026-06-19T00:07:00-07:00");
+  now = new Date("2026-06-19T00:01:01-07:00");
   const expired = await plugin.getUpdate();
 
   assert.equal(error.message.text.split("\n")[2], "TIMEOUT        ");
