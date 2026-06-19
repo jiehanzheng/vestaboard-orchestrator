@@ -2,7 +2,6 @@ import type { VestaboardClient, VestaboardMessage } from "./orchestrator.js";
 
 export function createVestaboardClient({
   dryRun,
-  mode,
   token,
   localApiKey,
   cloudUrl = "https://cloud.vestaboard.com/",
@@ -11,7 +10,6 @@ export function createVestaboardClient({
   logger = console
 }: {
   dryRun: boolean;
-  mode: "cloud" | "local";
   token?: string;
   localApiKey?: string;
   cloudUrl?: string;
@@ -32,35 +30,31 @@ export function createVestaboardClient({
     };
   }
 
-  if (mode === "cloud") {
-    if (!token) {
-      throw new Error("VESTABOARD_TOKEN is required for cloud mode.");
-    }
-
+  if (localApiKey) {
     return {
-      send: (message) =>
-        post(fetchImpl, cloudUrl, {
-          headers: { "X-Vestaboard-Token": token },
-          body: message.characters ? { characters: message.characters } : { text: message.text }
-        })
+      send(message) {
+        if (!message.characters) {
+          throw new Error("Local Vestaboard mode requires character-code messages.");
+        }
+
+        return post(fetchImpl, localUrl, {
+          headers: { "X-Vestaboard-Local-Api-Key": localApiKey },
+          body: message.characters
+        });
+      }
     };
   }
 
-  if (!localApiKey) {
-    throw new Error("VESTABOARD_LOCAL_API_KEY is required for local mode.");
+  if (!token) {
+    throw new Error("VESTABOARD_TOKEN or VESTABOARD_LOCAL_API_KEY is required.");
   }
 
   return {
-    send(message) {
-      if (!message.characters) {
-        throw new Error("Local Vestaboard mode requires character-code messages.");
-      }
-
-      return post(fetchImpl, localUrl, {
-        headers: { "X-Vestaboard-Local-Api-Key": localApiKey },
-        body: message.characters
-      });
-    }
+    send: (message) =>
+      post(fetchImpl, cloudUrl, {
+        headers: { "X-Vestaboard-Token": token },
+        body: message.characters ? { characters: message.characters } : { text: message.text }
+      })
   };
 }
 

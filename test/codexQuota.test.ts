@@ -14,6 +14,7 @@ import {
   selectAutoStartModel
 } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
+import { createVestaboardClient } from "../src/vestaboard.js";
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
   const snapshot = quotaFromRateLimits({
@@ -832,6 +833,46 @@ test("orchestrator retries unchanged message after failed send", async () => {
   await tick({ plugins: [plugin], vestaboard, sentMessageCache, logger: { info() {}, warn() {} } });
 
   assert.equal(attempts, 2);
+});
+
+test("vestaboard client prefers local API when local key is configured", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    localApiKey: "local-key",
+    cloudUrl: "https://cloud.example/",
+    localUrl: "http://local.example/message",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return new Response("", { status: 200 });
+    }
+  });
+
+  await client.send({ text: "ok", characters: [[1, 2, 3]] });
+
+  assert.equal(requests[0]?.url, "http://local.example/message");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+  assert.equal(requests[0]?.init.body, "[[1,2,3]]");
+});
+
+test("vestaboard client falls back to cloud API when local key is absent", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return new Response("", { status: 200 });
+    }
+  });
+
+  await client.send({ text: "ok" });
+
+  assert.equal(requests[0]?.url, "https://cloud.example/");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
+  assert.equal(requests[0]?.init.body, "{\"text\":\"ok\"}");
 });
 
 test("error message is encodable for Vestaboard Note", () => {
