@@ -24,6 +24,8 @@ test("uses aggregate rateLimits primary and secondary windows", () => {
   assert.ok(snapshot.weekly);
   assert.equal(snapshot.fiveHour.remainingRatio, 0.99);
   assert.equal(snapshot.weekly.remainingRatio, 0.34);
+  assert.equal(snapshot.fiveHour.durationMins, 300);
+  assert.equal(snapshot.weekly.durationMins, 10_080);
   assert.equal(snapshot.fiveHour.resetAt.toISOString(), "2026-06-19T09:44:00.000Z");
   assert.equal(snapshot.weekly.resetAt.toISOString(), "2026-06-21T21:19:00.000Z");
 });
@@ -48,13 +50,13 @@ test("renders partial quota when only the five-hour window is present", () => {
 test("renders remaining quota as green Vestaboard Note character codes", () => {
   const message = formatQuota(
     {
-      fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00") },
-      weekly: { remainingRatio: 0.34, resetAt: new Date("2026-06-24T14:19:00-07:00") }
+      fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.34, resetAt: new Date("2026-06-21T00:00:00-07:00"), durationMins: 10_080 }
     },
-    "America/Los_Angeles"
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T02:44:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244 06/24 1419");
+  assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244 06/21 0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 35, 35, 54]);
   assert.equal(message.characters?.every((row) => row.length === 15), true);
 });
@@ -62,14 +64,35 @@ test("renders remaining quota as green Vestaboard Note character codes", () => {
 test("renders full quota as 100 while preserving row width", () => {
   const message = formatQuota(
     {
-      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00") },
-      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00") }
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
     },
     "America/Los_Angeles"
   );
 
   assert.equal(message.text.split("\n")[0], "5HGGGGGGGGGG100");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 27, 36, 36]);
+});
+
+test("renders orange blocks when quota remaining is behind time remaining", () => {
+  const message = formatQuota(
+    {
+      fiveHour: {
+        remainingRatio: 0.3,
+        resetAt: new Date("2026-06-19T03:00:00-07:00"),
+        durationMins: 300
+      },
+      weekly: {
+        remainingRatio: 0.6,
+        resetAt: new Date("2026-06-22T00:00:00-07:00"),
+        durationMins: 10_080
+      }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
+  );
+
+  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGGG    60%\n0300 06/22 0000");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -90,8 +113,8 @@ test("orchestrator asks each plugin for priority and message in one call", async
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
     return {
-      fiveHour: { remainingRatio: 0.5, resetAt: new Date("2026-06-19T02:44:00-07:00") },
-      weekly: { remainingRatio: 0.5, resetAt: new Date("2026-06-24T14:19:00-07:00") }
+      fiveHour: { remainingRatio: 0.5, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.5, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
     };
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
 

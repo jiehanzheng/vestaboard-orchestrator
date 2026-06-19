@@ -31,12 +31,14 @@ interface QuotaSnapshot {
 interface QuotaWindow {
   remainingRatio: number;
   resetAt: Date;
+  durationMins: number;
 }
 
 type QuotaReader = () => Promise<QuotaSnapshot>;
 
 const BAR_WIDTH = 10;
 const GREEN = 66;
+const ORANGE = 64;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
 const APP_SERVER_TIMEOUT_MS = 10_000;
@@ -55,7 +57,7 @@ export class CodexQuotaPlugin implements Plugin {
     try {
       return {
         priority: this.options.priority,
-        message: formatQuota(await this.readQuota(), this.options.timeZone)
+        message: formatQuota(await this.readQuota(), { timeZone: this.options.timeZone })
       };
     } catch (error) {
       return {
@@ -205,9 +207,14 @@ export function quotaFromRateLimits(result: RateLimitsResult): QuotaSnapshot {
   };
 }
 
-export function formatQuota(snapshot: QuotaSnapshot, timeZone?: string): VestaboardMessage {
-  const fiveHour = quotaLine("5H", snapshot.fiveHour);
-  const weekly = quotaLine("WK", snapshot.weekly);
+export function formatQuota(
+  snapshot: QuotaSnapshot,
+  options: { timeZone?: string; now?: Date } | string = {}
+): VestaboardMessage {
+  const timeZone = typeof options === "string" ? options : options.timeZone;
+  const now = typeof options === "string" ? new Date() : (options.now ?? new Date());
+  const fiveHour = quotaLine("5H", snapshot.fiveHour, now);
+  const weekly = quotaLine("WK", snapshot.weekly, now);
   const reset = resetLine(snapshot.fiveHour?.resetAt, snapshot.weekly?.resetAt, timeZone);
 
   return {
@@ -237,30 +244,53 @@ function isRateWindow(window: RateWindow | null | undefined): window is RateWind
 }
 
 function quotaWindow(window: RateWindow): QuotaWindow {
+  if (!Number.isFinite(window.usedPercent) || !Number.isFinite(window.resetsAt) || !Number.isFinite(window.windowDurationMins)) {
+    throw new Error("Codex rate limit window contains invalid numeric fields.");
+  }
+
   return {
     remainingRatio: clamp((100 - window.usedPercent) / 100),
-    resetAt: new Date(window.resetsAt * 1000)
+    resetAt: new Date(window.resetsAt * 1000),
+    durationMins: window.windowDurationMins
   };
 }
 
-function quotaLine(prefix: "5H" | "WK", window?: QuotaWindow): { text: string; characters: number[] } {
+function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Date): { text: string; characters: number[] } {
   if (!window) {
     const text = `${prefix}${" ".repeat(BAR_WIDTH)}--%`;
     return { text, characters: encodeRow(text) };
   }
 
-  const filled = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
+  const quotaBlocks = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
+  const timeBlocks = Math.round(timeRemainingRatio(window, now) * BAR_WIDTH);
+  const orangeBlocks = Math.max(0, timeBlocks - quotaBlocks);
+  const blankBlocks = BAR_WIDTH - quotaBlocks - orangeBlocks;
   const percent = percentLabel(window.remainingRatio);
 
   return {
-    text: `${prefix}${"G".repeat(filled)}${" ".repeat(BAR_WIDTH - filled)}${percent}`,
-    characters: [...encode(prefix), ...Array(filled).fill(GREEN), ...Array(BAR_WIDTH - filled).fill(BLANK), ...encode(percent)]
+    text: `${prefix}${"G".repeat(quotaBlocks)}${"O".repeat(orangeBlocks)}${" ".repeat(blankBlocks)}${percent}`,
+    characters: [
+      ...encode(prefix),
+      ...Array(quotaBlocks).fill(GREEN),
+      ...Array(orangeBlocks).fill(ORANGE),
+      ...Array(blankBlocks).fill(BLANK),
+      ...encode(percent)
+    ]
   };
 }
 
 function percentLabel(remainingRatio: number): string {
   const percent = Math.round(clamp(remainingRatio) * 100);
   return percent >= 100 ? "100" : `${String(percent).padStart(2, "0")}%`;
+}
+
+function timeRemainingRatio(window: QuotaWindow, now: Date): number {
+  const durationMs = window.durationMins * 60_000;
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    throw new Error("Quota window duration must be positive.");
+  }
+
+  return clamp((window.resetAt.getTime() - now.getTime()) / durationMs);
 }
 
 function resetLine(fiveHour: Date | undefined, weekly: Date | undefined, timeZone?: string): string {
@@ -335,8 +365,8 @@ function clamp(value: number): number {
 async function readFixtureQuota(): Promise<QuotaSnapshot> {
   const now = new Date();
   return {
-    fiveHour: { remainingRatio: 0.76, resetAt: new Date(now.getTime() + 300 * 60_000) },
-    weekly: { remainingRatio: 0.44, resetAt: nextMonday(now) }
+    fiveHour: { remainingRatio: 0.76, resetAt: new Date(now.getTime() + 300 * 60_000), durationMins: 300 },
+    weekly: { remainingRatio: 0.44, resetAt: nextMonday(now), durationMins: 10_080 }
   };
 }
 
