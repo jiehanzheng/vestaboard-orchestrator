@@ -49,6 +49,8 @@ docker compose up --build
 
 The main loop is serial: it runs one orchestrator tick, waits `ORCHESTRATOR_INTERVAL_MINUTES` after that tick completes, then starts the next tick. It does not use `setInterval`, so a slow plugin cannot cause overlapping or immediate follow-up polls.
 
+The orchestrator remembers the last successfully sent Vestaboard payload. If the next selected plugin renders the same message, the loop skips the Vestaboard API call.
+
 ## Codex Quota Plugin
 
 The plugin renders a 15-column, 3-row Vestaboard Note-friendly layout:

@@ -1,11 +1,12 @@
 import { createCodexQuotaPlugin } from "./plugins/codexQuota/index.js";
-import { runForever, tick } from "./orchestrator.js";
+import { LastSentMessageCache, runForever, tick } from "./orchestrator.js";
 import { createVestaboardClient } from "./vestaboard.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const once = args.includes("--once");
 const intervalMinutes = Number(process.env.ORCHESTRATOR_INTERVAL_MINUTES ?? "5");
+const sentMessageCache = new LastSentMessageCache();
 
 const vestaboard = createVestaboardClient({
   dryRun,
@@ -26,7 +27,7 @@ const plugins = [
 ];
 
 async function run(): Promise<void> {
-  await tick({ plugins, vestaboard });
+  await tick({ plugins, vestaboard, sentMessageCache });
 }
 
 if (once) {
