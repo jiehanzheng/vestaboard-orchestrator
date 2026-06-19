@@ -24,6 +24,18 @@ Docker is the intended runtime path.
    docker compose up --build
    ```
 
+Core environment variables configure the orchestrator and Vestaboard transport. Plugin-specific variables are documented in each plugin section below.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ORCHESTRATOR_INTERVAL_MINUTES` | `5` | How often the orchestrator polls plugins. |
+| `VESTABOARD_MODE` | `cloud` | `cloud` for the Vestaboard Cloud API or `local` for the local API. |
+| `VESTABOARD_TOKEN` | | Vestaboard Cloud Read/Write API token. Required when `VESTABOARD_MODE=cloud`. |
+| `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
+| `VESTABOARD_LOCAL_API_KEY` | | Local API key. Required when `VESTABOARD_MODE=local`. |
+| `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
+| `CODEX_HOST_DIR` | `${HOME}/.codex` | Host Codex config directory mounted into Docker at `/home/node/.codex`. |
+
 The loop is serial: it runs one plugin pass, sends the selected message, waits `ORCHESTRATOR_INTERVAL_MINUTES`, then starts the next pass. If the winning message is unchanged from the last successful send, the orchestrator skips the Vestaboard API call.
 
 ## Plugins
