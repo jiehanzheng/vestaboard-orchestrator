@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CodexQuotaPlugin, formatError, formatQuota, quotaFromRateLimits } from "../src/plugins/codexQuota/index.js";
-import { runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
+import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
   const snapshot = quotaFromRateLimits({
@@ -160,6 +160,53 @@ test("orchestrator accepts numeric priority strings", async () => {
   });
 
   assert.equal(sent[0]?.text, "high");
+});
+
+test("orchestrator skips Vestaboard send when selected message is unchanged", async () => {
+  const sent: VestaboardMessage[] = [];
+  const sentMessageCache = new LastSentMessageCache();
+  const plugin = {
+    id: "same-message",
+    async getUpdate() {
+      return { priority: "normal", message: { text: "same" } };
+    }
+  };
+
+  const vestaboard = {
+    async send(message: VestaboardMessage) {
+      sent.push(message);
+    }
+  };
+
+  await tick({ plugins: [plugin], vestaboard, sentMessageCache, logger: { info() {}, warn() {} } });
+  await tick({ plugins: [plugin], vestaboard, sentMessageCache, logger: { info() {}, warn() {} } });
+
+  assert.equal(sent.length, 1);
+});
+
+test("orchestrator retries unchanged message after failed send", async () => {
+  let attempts = 0;
+  const sentMessageCache = new LastSentMessageCache();
+  const plugin = {
+    id: "retry-message",
+    async getUpdate() {
+      return { priority: "normal", message: { text: "same" } };
+    }
+  };
+
+  const vestaboard = {
+    async send() {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary failure");
+      }
+    }
+  };
+
+  await tick({ plugins: [plugin], vestaboard, sentMessageCache, logger: { info() {}, warn() {} } });
+  await tick({ plugins: [plugin], vestaboard, sentMessageCache, logger: { info() {}, warn() {} } });
+
+  assert.equal(attempts, 2);
 });
 
 test("error message is encodable for Vestaboard Note", () => {

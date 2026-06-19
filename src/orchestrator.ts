@@ -19,6 +19,18 @@ export interface VestaboardClient {
   send(message: VestaboardMessage): Promise<void>;
 }
 
+export class LastSentMessageCache {
+  private lastMessageKey: string | undefined;
+
+  has(message: VestaboardMessage): boolean {
+    return this.lastMessageKey === messageKey(message);
+  }
+
+  remember(message: VestaboardMessage): void {
+    this.lastMessageKey = messageKey(message);
+  }
+}
+
 const PRIORITIES: Record<string, number> = {
   none: 0,
   low: 10,
@@ -30,10 +42,12 @@ const PRIORITIES: Record<string, number> = {
 export async function tick({
   plugins,
   vestaboard,
+  sentMessageCache,
   logger = console
 }: {
   plugins: Plugin[];
   vestaboard: VestaboardClient;
+  sentMessageCache?: LastSentMessageCache;
   logger?: Pick<Console, "info" | "warn">;
 }): Promise<void> {
   const ranked = await Promise.all(
@@ -57,7 +71,13 @@ export async function tick({
     }
 
     try {
+      if (sentMessageCache?.has(update.message)) {
+        logger.info(`Skipped unchanged Vestaboard message from ${plugin.id}.`);
+        return;
+      }
+
       await vestaboard.send(update.message);
+      sentMessageCache?.remember(update.message);
       logger.info(`Sent Vestaboard message from ${plugin.id} at priority ${priority}.`);
       return;
     } catch (error) {
@@ -66,6 +86,10 @@ export async function tick({
   }
 
   logger.info("No plugin rendered a message.");
+}
+
+function messageKey(message: VestaboardMessage): string {
+  return JSON.stringify(message.characters ?? message.text);
 }
 
 export async function runForever({
