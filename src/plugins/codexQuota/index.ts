@@ -40,6 +40,7 @@ type QuotaReader = () => Promise<QuotaSnapshot>;
 const BAR_WIDTH = 10;
 const GREEN = 66;
 const ORANGE = 64;
+const WHITE = 69;
 const HEART = 62;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
@@ -273,16 +274,19 @@ function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Da
 
   const quotaBlocks = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
   const timeBlocks = Math.round(timeRemainingRatio(window, now) * BAR_WIDTH);
+  const greenBlocks = Math.min(quotaBlocks, timeBlocks);
   const orangeBlocks = Math.max(0, timeBlocks - quotaBlocks);
-  const blankBlocks = BAR_WIDTH - quotaBlocks - orangeBlocks;
+  const whiteBlocks = Math.max(0, quotaBlocks - timeBlocks);
+  const blankBlocks = BAR_WIDTH - greenBlocks - orangeBlocks - whiteBlocks;
   const percent = percentLabel(window.remainingRatio);
 
   return {
-    text: `${prefix}${"G".repeat(quotaBlocks)}${"O".repeat(orangeBlocks)}${" ".repeat(blankBlocks)}${percent}`,
+    text: `${prefix}${"G".repeat(greenBlocks)}${"O".repeat(orangeBlocks)}${"W".repeat(whiteBlocks)}${" ".repeat(blankBlocks)}${percent}`,
     characters: [
       ...encode(prefix),
-      ...Array(quotaBlocks).fill(GREEN),
+      ...Array(greenBlocks).fill(GREEN),
       ...Array(orangeBlocks).fill(ORANGE),
+      ...Array(whiteBlocks).fill(WHITE),
       ...Array(blankBlocks).fill(BLANK),
       ...encode(percent)
     ]

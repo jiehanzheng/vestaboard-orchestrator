@@ -41,7 +41,10 @@ test("renders partial quota when only the five-hour window is present", () => {
     }
   });
 
-  const message = formatQuota(snapshot, "America/Los_Angeles");
+  const message = formatQuota(snapshot, {
+    timeZone: "America/Los_Angeles",
+    now: new Date("2026-06-18T22:44:00-07:00")
+  });
 
   assert.ok(snapshot.fiveHour);
   assert.equal(snapshot.weekly, undefined);
@@ -53,14 +56,14 @@ test("renders partial quota when only the five-hour window is present", () => {
 test("renders remaining quota as green Vestaboard Note character codes", () => {
   const message = formatQuota(
     {
-      fiveHour: { remainingRatio: 0.99, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
-      weekly: { remainingRatio: 0.34, resetAt: new Date("2026-06-21T00:00:00-07:00"), durationMins: 10_080 }
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.3, resetAt: new Date("2026-06-21T00:00:00-07:00"), durationMins: 10_080 }
     },
-    { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T02:44:00-07:00") }
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244♥06/21♥0000");
-  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 35, 35, 54]);
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGGGGG100");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 27, 36, 36]);
   assert.equal(message.characters?.every((row) => row.length === 15), true);
 });
 
@@ -70,7 +73,7 @@ test("renders full quota as 100 while preserving row width", () => {
       fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
     },
-    "America/Los_Angeles"
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
   );
 
   assert.equal(message.text.split("\n")[0], "5HGGGGGGGGGG100");
@@ -94,8 +97,29 @@ test("renders orange blocks when quota remaining is behind time remaining", () =
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGGG    60%\n0300♥06/22♥0000");
+  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGWW    60%\n0300♥06/22♥0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
+});
+
+test("renders white blocks when quota consumption is slower than elapsed time", () => {
+  const message = formatQuota(
+    {
+      fiveHour: {
+        remainingRatio: 0.8,
+        resetAt: new Date("2026-06-19T02:00:00-07:00"),
+        durationMins: 300
+      },
+      weekly: {
+        remainingRatio: 0.5,
+        resetAt: new Date("2026-06-22T12:00:00-07:00"),
+        durationMins: 10_080
+      }
+    },
+    { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
+  );
+
+  assert.equal(message.text.split("\n")[0], "5HGGGGWWWW  80%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 69, 69, 69, 69, 0, 0, 34, 36, 54]);
 });
 
 test("demo mode drops five-hour quota by one percentage point", () => {
@@ -122,7 +146,7 @@ test("demo mode drops five-hour quota by one rendered block", () => {
   const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.7);
-  assert.equal(message.text.split("\n")[0], "5HGGGGGGG   70%");
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGW   70%");
 });
 
 test("demo mode accumulates repeated drops", () => {
