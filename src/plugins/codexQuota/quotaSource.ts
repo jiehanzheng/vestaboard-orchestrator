@@ -18,6 +18,9 @@ interface RateLimitBucket {
 export interface RateLimitsResult {
   rateLimits?: RateLimitBucket | null;
   rateLimitsByLimitId?: Record<string, RateLimitBucket> | null;
+  rateLimitResetCredits?: {
+    availableCount?: number | null;
+  } | null;
 }
 
 const FIVE_HOUR_MINS = 300;
@@ -71,6 +74,7 @@ async function readCodexQuotaWithSidecar(
   return withCodexAppServer(async (client) => {
     const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
     const snapshot = quotaFromRateLimits(rateLimits);
+    const rateLimitResetCreditsAvailableCount = resetCreditsAvailableCount(rateLimits);
     try {
       const autoStart = await autoStartSidecar.afterQuotaRead({
         client,
@@ -81,15 +85,22 @@ async function readCodexQuotaWithSidecar(
 
       return {
         snapshot,
-        thirdRowMessage: autoStart.statusMessage
+        thirdRowMessage: autoStart.statusMessage,
+        rateLimitResetCreditsAvailableCount
       };
     } catch (sidecarError) {
       return {
         snapshot,
-        sidecarError
+        sidecarError,
+        rateLimitResetCreditsAvailableCount
       };
     }
   });
+}
+
+function resetCreditsAvailableCount(result: RateLimitsResult): number | undefined {
+  const availableCount = result.rateLimitResetCredits?.availableCount;
+  return typeof availableCount === "number" && Number.isFinite(availableCount) ? availableCount : undefined;
 }
 
 function bucketsInPreferenceOrder(result: RateLimitsResult): RateLimitBucket[] {
