@@ -62,6 +62,21 @@ The third row normally shows reset timing: 5-hour reset time, weekly reset date,
 
 If Codex is temporarily unavailable after a successful read, the plugin can reuse cached quota ingredients and mark the board with a short third-row status instead of throwing away the display.
 
+#### Codex Login
+
+The app-server quota source needs a Codex login in the directory Docker mounts into the container.
+
+There are two common cases:
+
+- If you run this on the same machine where you normally use Codex, Compose already mounts `${HOME}/.codex` into the container. No extra login step is needed.
+- If you run this on a server with Docker, go to the directory that contains `docker-compose.yml` and log in using the Codex binary inside the container:
+
+  ```sh
+  docker compose run --rm --build vestaboard-orchestrator codex login --device-auth
+  ```
+
+If the host login directory is somewhere else, set `CODEX_HOST_DIR` in `.env` to that host path. Compose mounts it at `/home/node/.codex` inside the container, where `codex app-server` reads the persisted auth and config.
+
 #### Codex Env Config
 
 | Variable | Default | Description |
