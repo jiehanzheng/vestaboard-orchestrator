@@ -104,7 +104,7 @@ test("demo mode drops five-hour quota by one percentage point", () => {
       fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
     },
-    "drop-1-pct"
+    { pctDrops: 1, blockDrops: 0 }
   );
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.75);
@@ -117,12 +117,26 @@ test("demo mode drops five-hour quota by one rendered block", () => {
       fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
     },
-    "drop-1-color-block"
+    { pctDrops: 0, blockDrops: 1 }
   );
   const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.7);
   assert.equal(message.text.split("\n")[0], "5HGGGGGGG   70%");
+});
+
+test("demo mode accumulates repeated drops", () => {
+  const snapshot = applyCodexQuotaDemo(
+    {
+      fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
+    },
+    { pctDrops: 2, blockDrops: 1 }
+  );
+  const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
+
+  assert.equal(snapshot.fiveHour?.remainingRatio, 0.6);
+  assert.equal(message.text.split("\n")[0], "5HGGGGGG    60%");
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -270,10 +284,11 @@ test("demo signals queue mode and request a pause after the demo run", () => {
   const controller = new DemoSignalController();
 
   controller.queue("drop-1-pct", { info() {} });
-  assert.equal(controller.take(), "drop-1-pct");
+  assert.deepEqual(controller.take(), { pctDrops: 1, blockDrops: 0 });
   assert.equal(controller.takePauseAfterRun(), true);
   assert.equal(controller.takePauseAfterRun(), false);
 
+  controller.queue("drop-1-pct", { info() {} });
   controller.queue("drop-1-color-block", { info() {} });
-  assert.equal(controller.take(), "drop-1-color-block");
+  assert.deepEqual(controller.take(), { pctDrops: 2, blockDrops: 1 });
 });
