@@ -164,15 +164,126 @@ test("demo mode accumulates repeated drops", () => {
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
+  const warnings: unknown[][] = [];
   const plugin = new CodexQuotaPlugin(async () => {
     throw new Error("invalid json from codex");
-  }, { priority: "normal", errorPriority: "low" });
+  }, { priority: "normal", errorPriority: "low", logger: { warn: (...args) => warnings.push(args) } });
 
   const update = await plugin.getUpdate();
 
   assert.equal(update.priority, "low");
   assert.equal(update.message.text.split("\n")[0], "CODEX QUOTA ERR");
   assert.equal(update.message.characters?.every((row) => row.length === 15), true);
+  assert.equal(warnings[0]?.[0], "Codex quota read failed.");
+  assert.deepEqual(warnings[0]?.[1], {
+    reason: "invalid_json",
+    errorName: "Error",
+    errorMessage: "invalid json from codex",
+    fallbackPriority: "low",
+    cacheState: {
+      hasFiveHour: false,
+      hasWeekly: false,
+      updatedAt: undefined
+    },
+    vestaboardPreview: "CODEX QUOTA ERR | INVALID JSON FR | "
+  });
+});
+
+test("codex plugin renders cached quota ingredients when a later quota read fails", async () => {
+  const warnings: unknown[][] = [];
+  let fail = false;
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      throw new Error("Codex app-server timed out after 10000ms.");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn: (...args) => warnings.push(args) } });
+
+  const good = await plugin.getUpdate();
+  fail = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "low");
+  assert.equal(fallback.message.text.split("\n")[0].replace("?", " "), good.message.text.split("\n")[0]);
+  assert.equal(fallback.message.text.split("\n")[1].replace("?", " "), good.message.text.split("\n")[1]);
+  assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
+  assert.equal((warnings[0]?.[1] as { reason?: string }).reason, "timeout");
+  assert.deepEqual((warnings[0]?.[1] as { cacheState?: { hasFiveHour: boolean; hasWeekly: boolean } }).cacheState, {
+    hasFiveHour: true,
+    hasWeekly: true,
+    updatedAt: (warnings[0]?.[1] as { cacheState?: { updatedAt?: string } }).cacheState?.updatedAt
+  });
+});
+
+test("codex plugin fills missing ingredients from cache and marks stale row when there is room", async () => {
+  const warnings: unknown[][] = [];
+  let partial = false;
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (partial) {
+      return {
+        fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
+      };
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn: (...args) => warnings.push(args) } });
+
+  await plugin.getUpdate();
+  partial = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "low");
+  assert.match(fallback.message.text.split("\n")[0], /^5H/);
+  assert.match(fallback.message.text.split("\n")[1], /\?/);
+  assert.equal(fallback.message.text.split("\n")[2], "MISS WK        ");
+  assert.deepEqual(warnings[0]?.[1], {
+    missingWindows: ["WK"],
+    usedCachedWindows: ["WK"],
+    fallbackPriority: "low",
+    boardStatus: "MISS WK"
+  });
+});
+
+test("codex plugin recomputes cached ingredients instead of reusing rendered message", async () => {
+  let fail = false;
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      throw new Error("Codex app-server timed out after 10000ms.");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:00:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
+
+  const good = await plugin.getUpdate();
+  fail = true;
+  now = new Date("2026-06-19T01:00:00-07:00");
+  const fallback = await plugin.getUpdate();
+
+  assert.notEqual(fallback.message.text.split("\n")[0], good.message.text.split("\n")[0]);
+  assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
+});
+
+test("codex plugin renders missing row placeholder when no cached ingredient exists", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "low");
+  assert.equal(update.message.text.split("\n")[1], "WK          --%");
+  assert.equal(update.message.text.split("\n")[2], "MISS WK        ");
 });
 
 test("orchestrator asks each plugin for priority and message in one call", async () => {

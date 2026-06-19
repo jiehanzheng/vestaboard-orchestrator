@@ -36,6 +36,8 @@ export interface QuotaWindow {
 }
 
 type QuotaReader = () => Promise<QuotaSnapshot>;
+type QuotaRowName = "5H" | "WK";
+type Logger = Pick<Console, "warn">;
 
 const BAR_WIDTH = 10;
 const GREEN = 66;
@@ -50,6 +52,7 @@ const WEEKLY_MINS = 10_080;
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
+  private readonly quotaCache = new QuotaIngredientCache();
 
   constructor(
     private readonly readQuota: QuotaReader,
@@ -58,20 +61,49 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
+      logger?: Logger;
+      now?: () => Date;
     }
   ) {}
 
   async getUpdate(): Promise<PluginUpdate> {
     try {
+      const freshQuota = await this.readQuota();
+      const missingWindows = missingQuotaWindows(freshQuota);
+      this.quotaCache.update(freshQuota);
+      const displayQuota = this.quotaCache.merge(freshQuota);
+      const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
       const demoMode = this.options.takeDemoMode?.();
+      const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
+        timeZone: this.options.timeZone,
+        now: this.options.now?.(),
+        statusRow: missingWindows.length > 0 ? missingStatus(missingWindows) : undefined,
+        staleRows
+      });
+
+      if (missingWindows.length > 0) {
+        logIncompleteQuota(this.options.logger, missingWindows, staleRows, this.options.errorPriority);
+      }
+
       return {
-        priority: this.options.priority,
-        message: formatQuota(applyCodexQuotaDemo(await this.readQuota(), demoMode), { timeZone: this.options.timeZone })
+        priority: missingWindows.length > 0 ? this.options.errorPriority : this.options.priority,
+        message
       };
     } catch (error) {
+      const cachedQuota = this.quotaCache.snapshot();
+      const message = this.quotaCache.hasAny()
+        ? formatQuota(cachedQuota, {
+            timeZone: this.options.timeZone,
+            now: this.options.now?.(),
+            statusRow: errorStatus(error),
+            staleRows: cachedRowsPresentIn(cachedQuota)
+          })
+        : formatError(error);
+      logQuotaReadFailure(this.options.logger, error, this.options.errorPriority, message, this.quotaCache.state());
+
       return {
         priority: this.options.errorPriority,
-        message: formatError(error)
+        message
       };
     }
   }
@@ -82,15 +114,19 @@ export function createCodexQuotaPlugin({
   priority = "normal",
   errorPriority = "low",
   timeZone,
-  takeDemoMode
+  takeDemoMode,
+  logger = console,
+  now
 }: {
   fixture?: boolean;
   priority?: Priority;
   errorPriority?: Priority;
   timeZone?: string;
   takeDemoMode?: () => CodexQuotaDemoState | undefined;
+  logger?: Logger;
+  now?: () => Date;
 } = {}): CodexQuotaPlugin {
-  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode });
+  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode, logger, now });
 }
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
@@ -220,13 +256,16 @@ export function quotaFromRateLimits(result: RateLimitsResult): QuotaSnapshot {
 
 export function formatQuota(
   snapshot: QuotaSnapshot,
-  options: { timeZone?: string; now?: Date } | string = {}
+  options: { timeZone?: string; now?: Date; statusRow?: string; staleRows?: QuotaRowName[] } | string = {}
 ): VestaboardMessage {
   const timeZone = typeof options === "string" ? options : options.timeZone;
   const now = typeof options === "string" ? new Date() : (options.now ?? new Date());
-  const fiveHour = quotaLine("5H", snapshot.fiveHour, now);
-  const weekly = quotaLine("WK", snapshot.weekly, now);
-  const reset = resetLine(snapshot.fiveHour?.resetAt, snapshot.weekly?.resetAt, timeZone);
+  const staleRows = typeof options === "string" ? [] : (options.staleRows ?? []);
+  const fiveHour = quotaLine("5H", snapshot.fiveHour, now, staleRows.includes("5H"));
+  const weekly = quotaLine("WK", snapshot.weekly, now, staleRows.includes("WK"));
+  const reset = typeof options === "string" || !options.statusRow
+    ? resetLine(snapshot.fiveHour?.resetAt, snapshot.weekly?.resetAt, timeZone)
+    : statusLine(options.statusRow);
 
   return {
     text: [fiveHour.text, weekly.text, reset].join("\n"),
@@ -241,6 +280,152 @@ export function formatError(error: unknown): VestaboardMessage {
     text: rows.join("\n"),
     characters: rows.map((row) => encodeRow(row.padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS)))
   };
+}
+
+function logQuotaReadFailure(
+  logger: Logger | undefined,
+  error: unknown,
+  errorPriority: Priority,
+  message: VestaboardMessage,
+  cacheState: QuotaCacheState
+): void {
+  logger?.warn("Codex quota read failed.", {
+    reason: summarizeFailure(error),
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    fallbackPriority: String(errorPriority),
+    cacheState,
+    vestaboardPreview: messagePreview(message)
+  });
+}
+
+function logIncompleteQuota(
+  logger: Logger | undefined,
+  missingWindows: QuotaRowName[],
+  usedCachedWindows: QuotaRowName[],
+  errorPriority: Priority
+): void {
+  logger?.warn("Codex quota ingredients incomplete.", {
+    missingWindows,
+    usedCachedWindows,
+    fallbackPriority: String(errorPriority),
+    boardStatus: missingStatus(missingWindows)
+  });
+}
+
+function messagePreview(message: VestaboardMessage): string {
+  return message.text.replace(/\n/g, " | ");
+}
+
+function summarizeFailure(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  const normalized = detail.toUpperCase();
+  if (normalized.includes("TIMED OUT") || normalized.includes("TIMEOUT")) return "timeout";
+  if (normalized.includes("INVALID JSON")) return "invalid_json";
+  if (normalized.includes("EXITED")) return "app_server_exited";
+  if (normalized.includes("COULD NOT START")) return "app_server_start_failed";
+  if (normalized.includes("RATE LIMIT")) return "rate_limit";
+  if (normalized.includes("BUBBLEWRAP")) return "bubblewrap";
+  return "unknown";
+}
+
+interface QuotaCacheState {
+  hasFiveHour: boolean;
+  hasWeekly: boolean;
+  updatedAt?: string;
+}
+
+class QuotaIngredientCache {
+  private cached: { fiveHour?: QuotaWindow; weekly?: QuotaWindow; updatedAt?: Date } = {};
+
+  update(snapshot: QuotaSnapshot): void {
+    if (snapshot.fiveHour) {
+      this.cached.fiveHour = cloneQuotaWindow(snapshot.fiveHour);
+    }
+
+    if (snapshot.weekly) {
+      this.cached.weekly = cloneQuotaWindow(snapshot.weekly);
+    }
+
+    if (snapshot.fiveHour || snapshot.weekly) {
+      this.cached.updatedAt = new Date();
+    }
+  }
+
+  merge(snapshot: QuotaSnapshot = {}): QuotaSnapshot {
+    return {
+      fiveHour: snapshot.fiveHour ? cloneQuotaWindow(snapshot.fiveHour) : cloneOptionalQuotaWindow(this.cached.fiveHour),
+      weekly: snapshot.weekly ? cloneQuotaWindow(snapshot.weekly) : cloneOptionalQuotaWindow(this.cached.weekly)
+    };
+  }
+
+  snapshot(): QuotaSnapshot {
+    return this.merge();
+  }
+
+  hasAny(): boolean {
+    return this.cached.fiveHour !== undefined || this.cached.weekly !== undefined;
+  }
+
+  state(): QuotaCacheState {
+    return {
+      hasFiveHour: this.cached.fiveHour !== undefined,
+      hasWeekly: this.cached.weekly !== undefined,
+      updatedAt: this.cached.updatedAt?.toISOString()
+    };
+  }
+}
+
+function cloneOptionalQuotaWindow(window: QuotaWindow | undefined): QuotaWindow | undefined {
+  return window ? cloneQuotaWindow(window) : undefined;
+}
+
+function cloneQuotaWindow(window: QuotaWindow): QuotaWindow {
+  return {
+    remainingRatio: window.remainingRatio,
+    resetAt: new Date(window.resetAt),
+    durationMins: window.durationMins
+  };
+}
+
+function missingQuotaWindows(snapshot: QuotaSnapshot): QuotaRowName[] {
+  return [
+    snapshot.fiveHour ? undefined : "5H",
+    snapshot.weekly ? undefined : "WK"
+  ].filter((window): window is QuotaRowName => window !== undefined);
+}
+
+function cachedRowsUsedFor(missingWindows: QuotaRowName[], freshQuota: QuotaSnapshot, displayQuota: QuotaSnapshot): QuotaRowName[] {
+  return missingWindows.filter((window) => {
+    if (window === "5H") return freshQuota.fiveHour === undefined && displayQuota.fiveHour !== undefined;
+    return freshQuota.weekly === undefined && displayQuota.weekly !== undefined;
+  });
+}
+
+function cachedRowsPresentIn(snapshot: QuotaSnapshot): QuotaRowName[] {
+  return [
+    snapshot.fiveHour ? "5H" : undefined,
+    snapshot.weekly ? "WK" : undefined
+  ].filter((window): window is QuotaRowName => window !== undefined);
+}
+
+function missingStatus(missingWindows: QuotaRowName[]): string {
+  return `MISS ${missingWindows.join(" ")}`;
+}
+
+function errorStatus(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return summarizeBoardError(sanitizeError(detail));
+}
+
+function summarizeBoardError(message: string): string {
+  if (message.includes("TIMED OUT") || message.includes("TIMEOUT")) return "TIMEOUT";
+  if (message.includes("INVALID JSON")) return "BAD JSON";
+  if (message.includes("EXITED")) return "EXIT";
+  if (message.includes("COULD NOT START")) return "START";
+  if (message.includes("RATE LIMIT")) return "RATE LIMIT";
+  if (message.includes("BUBBLEWRAP")) return "BWRAP";
+  return message.split(" ").filter(Boolean).slice(0, 2).join(" ") || "CODEX";
 }
 
 function bucketsInPreferenceOrder(result: RateLimitsResult): RateLimitBucket[] {
@@ -266,7 +451,7 @@ function quotaWindow(window: RateWindow): QuotaWindow {
   };
 }
 
-function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Date): { text: string; characters: number[] } {
+function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Date, stale = false): { text: string; characters: number[] } {
   if (!window) {
     const text = `${prefix}${" ".repeat(BAR_WIDTH)}--%`;
     return { text, characters: encodeRow(text) };
@@ -277,16 +462,19 @@ function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Da
   const greenBlocks = Math.min(quotaBlocks, timeBlocks);
   const orangeBlocks = Math.max(0, timeBlocks - quotaBlocks);
   const blueBlocks = Math.max(0, quotaBlocks - timeBlocks);
-  const blankBlocks = BAR_WIDTH - greenBlocks - orangeBlocks - blueBlocks;
+  const availableBlankBlocks = BAR_WIDTH - greenBlocks - orangeBlocks - blueBlocks;
+  const staleBlocks = stale && availableBlankBlocks > 0 ? 1 : 0;
+  const blankBlocks = availableBlankBlocks - staleBlocks;
   const percent = percentLabel(window.remainingRatio);
 
   return {
-    text: `${prefix}${"G".repeat(greenBlocks)}${"O".repeat(orangeBlocks)}${"B".repeat(blueBlocks)}${" ".repeat(blankBlocks)}${percent}`,
+    text: `${prefix}${"G".repeat(greenBlocks)}${"O".repeat(orangeBlocks)}${"B".repeat(blueBlocks)}${"?".repeat(staleBlocks)}${" ".repeat(blankBlocks)}${percent}`,
     characters: [
       ...encode(prefix),
       ...Array(greenBlocks).fill(GREEN),
       ...Array(orangeBlocks).fill(ORANGE),
       ...Array(blueBlocks).fill(BLUE),
+      ...Array(staleBlocks).fill(charCode("?")),
       ...Array(blankBlocks).fill(BLANK),
       ...encode(percent)
     ]
@@ -312,6 +500,10 @@ function resetLine(fiveHour: Date | undefined, weekly: Date | undefined, timeZon
   const weeklyDate = weekly ? mmdd(weekly, timeZone) : "--/--";
   const weeklyTime = weekly ? hhmm(weekly, timeZone) : "----";
   return `${fiveHourReset}♥${weeklyDate}♥${weeklyTime}`;
+}
+
+function statusLine(status: string): string {
+  return sanitizeError(status).padEnd(NOTE_COLUMNS, " ").slice(0, NOTE_COLUMNS);
 }
 
 function hhmm(date: Date, timeZone?: string): string {
@@ -360,6 +552,7 @@ function charCode(char: string): number {
   if (char === "%") return 54;
   if (char === "-") return 44;
   if (char === "/") return 59;
+  if (char === "?") return 60;
 
   const code = char.toUpperCase().charCodeAt(0);
   if (code >= 65 && code <= 90) return code - 64;
