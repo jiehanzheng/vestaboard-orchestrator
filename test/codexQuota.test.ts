@@ -117,7 +117,7 @@ test("renders reset date and time only for the used weekly quota window", () => 
   assert.equal(message.text.split("\n")[2], "----♥06/24♥1419");
 });
 
-test("renders orange blocks when quota remaining is behind time remaining", () => {
+test("renders red blocks when quota remaining is behind time remaining", () => {
   const message = formatQuota(
     {
       fiveHour: {
@@ -134,8 +134,8 @@ test("renders orange blocks when quota remaining is behind time remaining", () =
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGBB    60%\n0300♥06/22♥0000");
-  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
+  assert.equal(message.text, "5HGGGRRR    30%\nWKGGGGBB    60%\n0300♥06/22♥0000");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 63, 63, 63, 0, 0, 0, 0, 29, 36, 54]);
 });
 
 test("renders blue blocks when quota consumption is slower than elapsed time", () => {

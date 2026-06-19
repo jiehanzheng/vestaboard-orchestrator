@@ -41,7 +41,7 @@ type Logger = Pick<Console, "warn">;
 
 const BAR_WIDTH = 10;
 const GREEN = 66;
-const ORANGE = 64;
+const RED = 63;
 const BLUE = 67;
 const HEART = 62;
 const BLANK = 0;
@@ -460,19 +460,19 @@ function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Da
   const quotaBlocks = Math.round(clamp(window.remainingRatio) * BAR_WIDTH);
   const timeBlocks = Math.round(timeRemainingRatio(window, now) * BAR_WIDTH);
   const greenBlocks = Math.min(quotaBlocks, timeBlocks);
-  const orangeBlocks = Math.max(0, timeBlocks - quotaBlocks);
+  const redBlocks = Math.max(0, timeBlocks - quotaBlocks);
   const blueBlocks = Math.max(0, quotaBlocks - timeBlocks);
-  const availableBlankBlocks = BAR_WIDTH - greenBlocks - orangeBlocks - blueBlocks;
+  const availableBlankBlocks = BAR_WIDTH - greenBlocks - redBlocks - blueBlocks;
   const staleBlocks = stale && availableBlankBlocks > 0 ? 1 : 0;
   const blankBlocks = availableBlankBlocks - staleBlocks;
   const percent = percentLabel(window.remainingRatio);
 
   return {
-    text: `${prefix}${"G".repeat(greenBlocks)}${"O".repeat(orangeBlocks)}${"B".repeat(blueBlocks)}${"?".repeat(staleBlocks)}${" ".repeat(blankBlocks)}${percent}`,
+    text: `${prefix}${"G".repeat(greenBlocks)}${"R".repeat(redBlocks)}${"B".repeat(blueBlocks)}${"?".repeat(staleBlocks)}${" ".repeat(blankBlocks)}${percent}`,
     characters: [
       ...encode(prefix),
       ...Array(greenBlocks).fill(GREEN),
-      ...Array(orangeBlocks).fill(ORANGE),
+      ...Array(redBlocks).fill(RED),
       ...Array(blueBlocks).fill(BLUE),
       ...Array(staleBlocks).fill(charCode("?")),
       ...Array(blankBlocks).fill(BLANK),

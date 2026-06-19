@@ -64,12 +64,12 @@ WKGGGG      40%
 1330♥06/22♥0000
 ```
 
-`G` in dry-run output represents Vestaboard green block character code `66`; `O` represents orange character code `64`; `B` represents blue character code `67`. The actual API payload sends `characters`, not text.
+`G` in dry-run output represents Vestaboard green block character code `66`; `R` represents red character code `63`; `B` represents blue character code `67`. The actual API payload sends `characters`, not text.
 
 The percentage shows remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` so the 15-column row still fits; unavailable windows render as `--%`. The 10-block bar overlays quota remaining against time remaining until reset:
 
 - Green blocks show quota remaining.
-- Orange blocks appear only when the time-remaining bar is longer than the quota-remaining bar, showing how far behind pace the quota is.
+- Red blocks appear only when the time-remaining bar is longer than the quota-remaining bar, showing how far behind pace the quota is.
 - Blue blocks appear only when the quota-remaining bar is longer than the time-remaining bar, showing how far ahead pace the quota is.
 - The reset line uses Vestaboard Note heart code `62` as the separator between the 5H reset, weekly reset date, and weekly reset time. Unused quota windows render reset placeholders so a rolling unused reset timestamp does not cause minute-by-minute board updates.
 
