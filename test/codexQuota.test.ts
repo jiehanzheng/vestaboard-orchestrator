@@ -97,11 +97,11 @@ test("renders orange blocks when quota remaining is behind time remaining", () =
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGWW    60%\n0300♥06/22♥0000");
+  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGBB    60%\n0300♥06/22♥0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
 });
 
-test("renders white blocks when quota consumption is slower than elapsed time", () => {
+test("renders blue blocks when quota consumption is slower than elapsed time", () => {
   const message = formatQuota(
     {
       fiveHour: {
@@ -118,8 +118,8 @@ test("renders white blocks when quota consumption is slower than elapsed time", 
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[0], "5HGGGGWWWW  80%");
-  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 69, 69, 69, 69, 0, 0, 34, 36, 54]);
+  assert.equal(message.text.split("\n")[0], "5HGGGGBBBB  80%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 67, 67, 67, 67, 0, 0, 34, 36, 54]);
 });
 
 test("demo mode drops five-hour quota by one percentage point", () => {
@@ -146,7 +146,7 @@ test("demo mode drops five-hour quota by one rendered block", () => {
   const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.7);
-  assert.equal(message.text.split("\n")[0], "5HGGGGGGW   70%");
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGB   70%");
 });
 
 test("demo mode accumulates repeated drops", () => {
