@@ -437,13 +437,13 @@ test("codex plugin keeps fresh quota display when auto-start sidecar fails", asy
   assert.equal(update.priority, "high");
   assert.match(update.message.text.split("\n")[0], /^5H/);
   assert.match(update.message.text.split("\n")[1], /^WK/);
-  assert.equal(update.message.text.split("\n")[2], "MODEL/LIST FAIL");
+  assert.equal(update.message.text.split("\n")[2], "AUTO PING FAIL ");
   assert.equal(warnings[0]?.[0], "Codex quota auto-start failed after quota read.");
   assert.deepEqual(warnings[0]?.[1], {
     reason: "unknown",
     errorName: "Error",
     errorMessage: "model/list failed",
-    boardStatus: "MODEL/LIST FAILED"
+    boardStatus: "AUTO PING FAIL"
   });
 });
 
@@ -553,6 +553,27 @@ test("codex plugin renders cached quota ingredients when a later quota read fail
     hasWeekly: true,
     updatedAt: (warnings[0]?.[1] as { cacheState?: { updatedAt?: string } }).cacheState?.updatedAt
   });
+});
+
+test("codex plugin shows fetch fail for generic cached quota read failures", async () => {
+  let fail = false;
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      throw new Error("Codex app-server error: invalid request");
+    }
+
+    return {
+      fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
+
+  await plugin.getUpdate();
+  fail = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "high");
+  assert.equal(fallback.message.text.split("\n")[2], "FETCH FAIL     ");
 });
 
 test("codex plugin fills missing ingredients from cache and marks stale row when there is room", async () => {
