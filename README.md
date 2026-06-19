@@ -75,7 +75,7 @@ The percentage shows remaining quota, derived from `100 - usedPercent`. Full quo
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
 
-Each plugin returns priority and message together in one call, so the Codex quota plugin runs `codex app-server` at most once per orchestrator tick. If Codex times out, returns malformed JSON, or returns an unexpected quota shape, the plugin returns a lower-priority error message for the board instead of throwing.
+Each plugin returns priority and message together in one call, so the Codex quota plugin runs `codex app-server` at most once per orchestrator tick. If Codex times out, returns malformed JSON, or returns an unexpected quota shape, the plugin returns a lower-priority error message for the board instead of throwing. After the first successful quota read, the plugin caches parsed quota ingredients and can use them to render stale 5H/WK rows with a short status on the reset row during intermittent Codex failures.
 
 Use fixture mode to validate formatting without a running or authenticated Codex app-server:
 
