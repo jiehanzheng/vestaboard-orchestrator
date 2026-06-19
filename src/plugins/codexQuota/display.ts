@@ -97,7 +97,7 @@ function quotaLine(prefix: "5H" | "WK", window: QuotaWindow | undefined, now: Da
 
 function percentLabel(remainingRatio: number): string {
   const percent = Math.round(clamp(remainingRatio) * 100);
-  return percent >= 100 ? "100" : `${String(percent).padStart(2, "0")}%`;
+  return percent >= 100 ? "100" : `${String(percent).padStart(2, " ")}%`;
 }
 
 function timeRemainingRatio(window: QuotaWindow, now: Date): number {
