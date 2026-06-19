@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DemoSignalController } from "../src/demoSignals.js";
+import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import { CodexQuotaPlugin, formatError, formatQuota, quotaFromRateLimits } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 
@@ -94,6 +96,33 @@ test("renders orange blocks when quota remaining is behind time remaining", () =
 
   assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGGG    60%\n0300♥06/22♥0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
+});
+
+test("demo mode drops five-hour quota by one percentage point", () => {
+  const snapshot = applyCodexQuotaDemo(
+    {
+      fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
+    },
+    "drop-1-pct"
+  );
+
+  assert.equal(snapshot.fiveHour?.remainingRatio, 0.75);
+  assert.equal(snapshot.weekly?.remainingRatio, 0.6);
+});
+
+test("demo mode drops five-hour quota by one rendered block", () => {
+  const snapshot = applyCodexQuotaDemo(
+    {
+      fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
+    },
+    "drop-1-color-block"
+  );
+  const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
+
+  assert.equal(snapshot.fiveHour?.remainingRatio, 0.7);
+  assert.equal(message.text.split("\n")[0], "5HGGGGGGG   70%");
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -235,4 +264,16 @@ test("main loop waits after each completed tick", async () => {
   });
 
   assert.deepEqual(events, ["run-0", "done-1", "sleep-300000", "run-1", "done-2"]);
+});
+
+test("demo signals queue mode and request a pause after the demo run", () => {
+  const controller = new DemoSignalController();
+
+  controller.queue("drop-1-pct", { info() {} });
+  assert.equal(controller.take(), "drop-1-pct");
+  assert.equal(controller.takePauseAfterRun(), true);
+  assert.equal(controller.takePauseAfterRun(), false);
+
+  controller.queue("drop-1-color-block", { info() {} });
+  assert.equal(controller.take(), "drop-1-color-block");
 });

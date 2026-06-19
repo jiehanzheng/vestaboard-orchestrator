@@ -46,6 +46,7 @@ docker compose up --build
 | `CODEX_QUOTA_PRIORITY` | `normal` | Plugin priority: `low`, `normal`, `high`, `urgent`, or a number. |
 | `CODEX_QUOTA_ERROR_PRIORITY` | `low` | Priority for the Codex quota error message. |
 | `CODEX_QUOTA_TIME_ZONE` | local process timezone | Time zone used for reset labels. |
+| `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | `5` | How long to pause normal polling after a signal-triggered demo render. |
 
 The main loop is serial: it runs one orchestrator tick, waits `ORCHESTRATOR_INTERVAL_MINUTES` after that tick completes, then starts the next tick. It does not use `setInterval`, so a slow plugin cannot cause overlapping or immediate follow-up polls.
 
@@ -58,7 +59,7 @@ The plugin renders a 15-column, 3-row Vestaboard Note-friendly layout:
 ```text
 5HGGGGGGGG  80%
 WKGGGG      40%
-1330 06/22 0000
+1330♥06/22♥0000
 ```
 
 `G` in dry-run output represents Vestaboard green block character code `66`; `O` represents orange character code `64`. The actual API payload sends `characters`, not text.
@@ -78,3 +79,14 @@ Use fixture mode to validate formatting without a running or authenticated Codex
 ```sh
 CODEX_QUOTA_SOURCE=fixture pnpm dry-run
 ```
+
+## Demo Mode
+
+The long-running process can render one realistic Codex quota demo without restarting:
+
+```sh
+kill -HUP <pid>   # drop-1-pct: reduce 5H remaining quota by one percentage point
+kill -USR2 <pid>  # drop-1-color-block: reduce 5H remaining quota by one rendered block
+```
+
+The signal wakes the loop if it is sleeping, renders the demo from a fresh quota read, then pauses normal polling for `CODEX_QUOTA_DEMO_PAUSE_MINUTES`.

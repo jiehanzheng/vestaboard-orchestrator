@@ -1,3 +1,4 @@
+import { DemoSignalController } from "./demoSignals.js";
 import { createCodexQuotaPlugin } from "./plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick } from "./orchestrator.js";
 import { createVestaboardClient } from "./vestaboard.js";
@@ -7,6 +8,8 @@ const dryRun = args.includes("--dry-run");
 const once = args.includes("--once");
 const intervalMinutes = Number(process.env.ORCHESTRATOR_INTERVAL_MINUTES ?? "5");
 const sentMessageCache = new LastSentMessageCache();
+const demoPauseMinutes = Number(process.env.CODEX_QUOTA_DEMO_PAUSE_MINUTES ?? "5");
+const demoSignals = new DemoSignalController();
 
 const vestaboard = createVestaboardClient({
   dryRun,
@@ -22,7 +25,8 @@ const plugins = [
     fixture: process.env.CODEX_QUOTA_SOURCE === "fixture",
     priority: process.env.CODEX_QUOTA_PRIORITY ?? "normal",
     errorPriority: process.env.CODEX_QUOTA_ERROR_PRIORITY ?? "low",
-    timeZone: process.env.CODEX_QUOTA_TIME_ZONE
+    timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
+    takeDemoMode: () => demoSignals.take()
   })
 ];
 
@@ -33,13 +37,22 @@ async function run(): Promise<void> {
 if (once) {
   run().catch(fail);
 } else {
-  runForever({
-    runOnce: run,
-    waitMs: intervalMinutes * 60_000
-  }).catch(fail);
+  demoSignals.install(console);
+  runWithDemoSignals().catch(fail);
 }
 
 function fail(error: unknown): void {
   console.error(error);
   process.exitCode = 1;
+}
+
+async function runWithDemoSignals(): Promise<void> {
+  await runForever({
+    runOnce: run,
+    waitMs: intervalMinutes * 60_000,
+    sleep: async (ms) => {
+      const delayMs = demoSignals.takePauseAfterRun() ? demoPauseMinutes * 60_000 : ms;
+      await demoSignals.sleep(delayMs);
+    }
+  });
 }

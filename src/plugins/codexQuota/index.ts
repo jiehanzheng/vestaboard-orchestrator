@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
 import type { Plugin, PluginUpdate, Priority, VestaboardMessage } from "../../orchestrator.js";
+import { applyCodexQuotaDemo, type CodexQuotaDemoMode } from "./demo.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -23,12 +24,12 @@ interface RateLimitsResult {
   rateLimitsByLimitId?: Record<string, RateLimitBucket> | null;
 }
 
-interface QuotaSnapshot {
+export interface QuotaSnapshot {
   fiveHour?: QuotaWindow;
   weekly?: QuotaWindow;
 }
 
-interface QuotaWindow {
+export interface QuotaWindow {
   remainingRatio: number;
   resetAt: Date;
   durationMins: number;
@@ -51,14 +52,20 @@ export class CodexQuotaPlugin implements Plugin {
 
   constructor(
     private readonly readQuota: QuotaReader,
-    private readonly options: { priority: Priority; errorPriority: Priority; timeZone?: string }
+    private readonly options: {
+      priority: Priority;
+      errorPriority: Priority;
+      timeZone?: string;
+      takeDemoMode?: () => CodexQuotaDemoMode | undefined;
+    }
   ) {}
 
   async getUpdate(): Promise<PluginUpdate> {
     try {
+      const demoMode = this.options.takeDemoMode?.();
       return {
         priority: this.options.priority,
-        message: formatQuota(await this.readQuota(), { timeZone: this.options.timeZone })
+        message: formatQuota(applyCodexQuotaDemo(await this.readQuota(), demoMode), { timeZone: this.options.timeZone })
       };
     } catch (error) {
       return {
@@ -73,14 +80,16 @@ export function createCodexQuotaPlugin({
   fixture = false,
   priority = "normal",
   errorPriority = "low",
-  timeZone
+  timeZone,
+  takeDemoMode
 }: {
   fixture?: boolean;
   priority?: Priority;
   errorPriority?: Priority;
   timeZone?: string;
+  takeDemoMode?: () => CodexQuotaDemoMode | undefined;
 } = {}): CodexQuotaPlugin {
-  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone });
+  return new CodexQuotaPlugin(fixture ? readFixtureQuota : readCodexQuota, { priority, errorPriority, timeZone, takeDemoMode });
 }
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
