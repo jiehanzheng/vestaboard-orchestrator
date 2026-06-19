@@ -39,6 +39,7 @@ type QuotaReader = () => Promise<QuotaSnapshot>;
 const BAR_WIDTH = 10;
 const GREEN = 66;
 const ORANGE = 64;
+const HEART = 62;
 const BLANK = 0;
 const NOTE_COLUMNS = 15;
 const APP_SERVER_TIMEOUT_MS = 10_000;
@@ -297,7 +298,7 @@ function resetLine(fiveHour: Date | undefined, weekly: Date | undefined, timeZon
   const fiveHourReset = fiveHour ? hhmm(fiveHour, timeZone) : "----";
   const weeklyDate = weekly ? mmdd(weekly, timeZone) : "--/--";
   const weeklyTime = weekly ? hhmm(weekly, timeZone) : "----";
-  return `${fiveHourReset} ${weeklyDate} ${weeklyTime}`;
+  return `${fiveHourReset}♥${weeklyDate}♥${weeklyTime}`;
 }
 
 function hhmm(date: Date, timeZone?: string): string {
@@ -342,6 +343,7 @@ function encode(text: string): number[] {
 
 function charCode(char: string): number {
   if (char === " ") return BLANK;
+  if (char === "♥") return HEART;
   if (char === "%") return 54;
   if (char === "-") return 44;
   if (char === "/") return 59;

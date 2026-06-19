@@ -65,6 +65,7 @@ The percentage shows remaining quota, derived from `100 - usedPercent`. Full quo
 
 - Green blocks show quota remaining.
 - Orange blocks appear only when the time-remaining bar is longer than the quota-remaining bar, showing how far behind pace the quota is.
+- The reset line uses Vestaboard Note heart code `62` as the separator between the 5H reset, weekly reset date, and weekly reset time.
 
 The default source spawns `codex app-server`, initializes JSON-RPC over stdin/stdout, and calls `account/rateLimits/read`. It maps aggregate `rateLimits.primary` to the 5H row and aggregate `rateLimits.secondary` to the WK row.
 

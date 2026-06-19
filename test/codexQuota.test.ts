@@ -43,8 +43,9 @@ test("renders partial quota when only the five-hour window is present", () => {
 
   assert.ok(snapshot.fiveHour);
   assert.equal(snapshot.weekly, undefined);
-  assert.equal(message.text, "5HGGGGGGGG  80%\nWK          --%\n0244 --/-- ----");
+  assert.equal(message.text, "5HGGGGGGGG  80%\nWK          --%\n0244♥--/--♥----");
   assert.deepEqual(message.characters?.[1], [23, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 44, 54]);
+  assert.deepEqual(message.characters?.[2], [36, 28, 30, 30, 62, 44, 44, 59, 44, 44, 62, 44, 44, 44, 44]);
 });
 
 test("renders remaining quota as green Vestaboard Note character codes", () => {
@@ -56,7 +57,7 @@ test("renders remaining quota as green Vestaboard Note character codes", () => {
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T02:44:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244 06/21 0000");
+  assert.equal(message.text, "5HGGGGGGGGGG99%\nWKGGG       34%\n0244♥06/21♥0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 35, 35, 54]);
   assert.equal(message.characters?.every((row) => row.length === 15), true);
 });
@@ -91,7 +92,7 @@ test("renders orange blocks when quota remaining is behind time remaining", () =
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGGG    60%\n0300 06/22 0000");
+  assert.equal(message.text, "5HGGGOOO    30%\nWKGGGGGG    60%\n0300♥06/22♥0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 64, 64, 64, 0, 0, 0, 0, 29, 36, 54]);
 });
 
@@ -129,7 +130,7 @@ test("orchestrator asks each plugin for priority and message in one call", async
   });
 
   assert.equal(reads, 1);
-  assert.equal(sent[0]?.text.includes("0244 06/24 1419"), true);
+  assert.equal(sent[0]?.text.includes("0244♥06/24♥1419"), true);
 });
 
 test("orchestrator accepts numeric priority strings", async () => {
