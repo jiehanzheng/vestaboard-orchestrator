@@ -13,7 +13,8 @@ import {
   missingStatus,
   normalizeQuotaRead,
   QuotaIngredientCache,
-  THIRD_ROW_MESSAGE_TTL_MS,
+  REFRESH_THIRD_ROW_MESSAGE_TTL_MS,
+  TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS,
   ThirdRowMessageStack
 } from "./pluginState.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
@@ -86,7 +87,7 @@ export class CodexQuotaPlugin implements Plugin {
 
   private fallbackUpdate(error: unknown, now: Date): PluginUpdate {
     const cachedQuota = this.quotaCache.snapshot();
-    this.thirdRowMessages.push(errorStatus(error), statusExpiration(now));
+    this.thirdRowMessages.push(errorStatus(error), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
     const statusRow = this.quotaCache.hasAny() ? this.thirdRowMessages.top(now) : undefined;
     const message = this.quotaCache.hasAny()
       ? formatQuota(cachedQuota, {
@@ -111,15 +112,15 @@ export class CodexQuotaPlugin implements Plugin {
     missingWindows: ("5H" | "WK")[]
   ): void {
     if (thirdRowMessage) {
-      this.thirdRowMessages.push(thirdRowMessage, statusExpiration(now));
+      this.thirdRowMessages.push(thirdRowMessage, now, REFRESH_THIRD_ROW_MESSAGE_TTL_MS);
     }
 
     if (sidecarError) {
-      this.thirdRowMessages.push(errorStatus(sidecarError), statusExpiration(now));
+      this.thirdRowMessages.push(errorStatus(sidecarError), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
     }
 
     if (missingWindows.length > 0) {
-      this.thirdRowMessages.push(missingStatus(missingWindows), statusExpiration(now));
+      this.thirdRowMessages.push(missingStatus(missingWindows), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
     }
   }
 }
@@ -148,10 +149,6 @@ export function createCodexQuotaPlugin({
         weekly: autoStartWindowWk
       });
   return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, takeDemoMode, restoreDemoMode, logger, now });
-}
-
-function statusExpiration(now: Date): Date {
-  return new Date(now.getTime() + THIRD_ROW_MESSAGE_TTL_MS);
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {
