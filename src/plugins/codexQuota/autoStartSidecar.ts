@@ -32,10 +32,10 @@ export class CodexAutoStartSidecar {
       return {};
     }
 
+    this.history.recordPingAttempt(plan, now);
     const models = await readAllModels(client);
     const selection = selectAutoStartModel(models);
     await sendAutoStartPrompt(client, selection);
-    this.history.recordPingSuccess(plan, new Date());
     return { statusMessage: autoStartPingMessage(selection) };
   }
 }

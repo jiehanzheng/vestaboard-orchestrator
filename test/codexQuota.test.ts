@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DemoSignalController } from "../src/demoSignals.js";
-import { isMatchingTurnCompletion, turnCompletionFailure } from "../src/plugins/codexQuota/appServer.js";
+import { isMatchingTurnCompletion, parseModelListResult, turnCompletionFailure } from "../src/plugins/codexQuota/appServer.js";
 import { CodexAutoStartSidecar } from "../src/plugins/codexQuota/autoStartSidecar.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import {
@@ -574,6 +574,37 @@ test("auto-start model selection falls back to mini and then the last filtered m
   });
 });
 
+test("model list parser permits omitted reasoning efforts on unselected models", () => {
+  const models = parseModelListResult({
+    data: [
+      { id: "spark", model: "gpt-5.3-codex-spark" },
+      { id: "regular", model: "gpt-5.5", supportedReasoningEfforts: null },
+      {
+        id: "nano",
+        model: "gpt-5.4-nano",
+        supportedReasoningEfforts: [{ reasoningEffort: "low" }]
+      }
+    ],
+    nextCursor: null
+  }).data;
+
+  assert.deepEqual(selectAutoStartModel(models), {
+    model: "gpt-5.4-nano",
+    reasoningEffort: "low"
+  });
+});
+
+test("model selection rejects when the selected model has no reasoning effort", () => {
+  const models = parseModelListResult({
+    data: [
+      { id: "nano", model: "gpt-5.4-nano" }
+    ],
+    nextCursor: null
+  }).data;
+
+  assert.throws(() => selectAutoStartModel(models), /did not include a reasoning effort/);
+});
+
 test("auto-start planner selects enabled unused windows and skips disabled or used windows", () => {
   const state = new QuotaWindowHistory();
   const now = new Date("2026-06-19T00:00:00-07:00");
@@ -593,7 +624,7 @@ test("auto-start planner selects enabled unused windows and skips disabled or us
   });
 });
 
-test("auto-start planner records successful windows and allows a newer reset timestamp", () => {
+test("auto-start planner records attempted windows and allows a newer reset timestamp", () => {
   const state = new QuotaWindowHistory();
   const firstNow = new Date("2026-06-19T00:00:00-07:00");
   const first = state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: firstNow });
@@ -601,7 +632,7 @@ test("auto-start planner records successful windows and allows a newer reset tim
   assert.equal(first.type === "ping" ? first.windows.length : 0, 2);
 
   if (first.type === "ping") {
-    state.recordPingSuccess(first, firstNow);
+    state.recordPingAttempt(first, firstNow);
   }
 
   assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }), {
@@ -621,7 +652,7 @@ test("auto-start planner records successful windows and allows a newer reset tim
   });
 });
 
-test("auto-start planner applies cooldown only after successful pings", () => {
+test("auto-start planner applies cooldown after ping attempts", () => {
   const state = new QuotaWindowHistory();
   const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.5 });
   const now = new Date("2026-06-19T00:00:00-07:00");
@@ -630,7 +661,7 @@ test("auto-start planner applies cooldown only after successful pings", () => {
   assert.equal(state.planAutoStart(snapshot, { fiveHour: true, weekly: false }, { force: false, now }).type, "ping");
 
   if (first.type === "ping") {
-    state.recordPingSuccess(first, now);
+    state.recordPingAttempt(first, now);
   }
 
   assert.deepEqual(state.planAutoStart({
@@ -650,13 +681,13 @@ test("auto-start planner force mode bypasses flags quota records and cooldown wi
   const normal = state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: firstNow });
   assert.equal(normal.type, "ping");
   if (normal.type === "ping") {
-    state.recordPingSuccess(normal, firstNow);
+    state.recordPingAttempt(normal, firstNow);
   }
 
   const force = state.planAutoStart(quotaSnapshot({ fiveHour: 0.8, weekly: 0.4 }), { fiveHour: false, weekly: false }, { force: true, now: new Date("2026-06-19T00:01:00-07:00") });
   assert.deepEqual(force, { type: "ping", trigger: "force", windows: [] });
   if (force.type === "ping") {
-    state.recordPingSuccess(force, new Date("2026-06-19T00:01:00-07:00"));
+    state.recordPingAttempt(force, new Date("2026-06-19T00:01:00-07:00"));
   }
 
   assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
@@ -931,6 +962,109 @@ test("auto-start sidecar rejects non-progress turn start statuses", async () => 
     force: true,
     now: new Date("2026-06-19T00:00:00-07:00")
   }), /started with status interrupted/);
+});
+
+test("auto-start sidecar records attempts before model reads can fail", async () => {
+  const history = new QuotaWindowHistory();
+  const config = { fiveHour: true, weekly: false };
+  const sidecar = new CodexAutoStartSidecar(config, history);
+  const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.4 });
+  const now = new Date("2026-06-19T00:00:00-07:00");
+  const client = {
+    async readRateLimits() {
+      throw new Error("unexpected readRateLimits");
+    },
+    async readModels() {
+      throw new Error("model/list failed");
+    },
+    async startThread() {
+      throw new Error("unexpected startThread");
+    },
+    async startTurn() {
+      throw new Error("unexpected startTurn");
+    },
+    async waitForTurnCompletion() {}
+  };
+
+  await assert.rejects(() => sidecar.afterQuotaRead({ client, snapshot, force: false, now }), /model\/list failed/);
+
+  assert.deepEqual(history.planAutoStart(snapshot, config, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
+  assert.deepEqual(history.planAutoStart({
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 },
+    weekly: snapshot.weekly
+  }, config, { force: false, now: new Date("2026-06-19T00:29:59-07:00") }), {
+    type: "skip",
+    reason: "cooldown"
+  });
+});
+
+test("auto-start sidecar records attempts before turn start can fail", async () => {
+  const history = new QuotaWindowHistory();
+  const config = { fiveHour: true, weekly: false };
+  const sidecar = new CodexAutoStartSidecar(config, history);
+  const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.4 });
+  const now = new Date("2026-06-19T00:00:00-07:00");
+  const client = {
+    async readRateLimits() {
+      throw new Error("unexpected readRateLimits");
+    },
+    async readModels() {
+      return {
+        data: [model("gpt-5.4-mini", ["low"])],
+        nextCursor: null
+      };
+    },
+    async startThread() {
+      return { thread: { id: "thread-1" } };
+    },
+    async startTurn() {
+      return { turn: { id: "turn-1", status: "interrupted" } };
+    },
+    async waitForTurnCompletion() {}
+  };
+
+  await assert.rejects(() => sidecar.afterQuotaRead({ client, snapshot, force: false, now }), /started with status interrupted/);
+
+  assert.deepEqual(history.planAutoStart(snapshot, config, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
+});
+
+test("auto-start sidecar records attempts before model selection can fail", async () => {
+  const history = new QuotaWindowHistory();
+  const config = { fiveHour: true, weekly: false };
+  const sidecar = new CodexAutoStartSidecar(config, history);
+  const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.4 });
+  const now = new Date("2026-06-19T00:00:00-07:00");
+  const client = {
+    async readRateLimits() {
+      throw new Error("unexpected readRateLimits");
+    },
+    async readModels() {
+      return {
+        data: [parseModelListResult({ data: [{ id: "nano", model: "gpt-5.4-nano" }] }).data[0]!],
+        nextCursor: null
+      };
+    },
+    async startThread() {
+      throw new Error("unexpected startThread");
+    },
+    async startTurn() {
+      throw new Error("unexpected startTurn");
+    },
+    async waitForTurnCompletion() {}
+  };
+
+  await assert.rejects(() => sidecar.afterQuotaRead({ client, snapshot, force: false, now }), /did not include a reasoning effort/);
+
+  assert.deepEqual(history.planAutoStart(snapshot, config, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
+    type: "skip",
+    reason: "no-eligible-window"
+  });
 });
 
 test("codex plugin keeps fresh quota display when auto-start sidecar fails", async () => {

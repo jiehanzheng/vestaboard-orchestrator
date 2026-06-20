@@ -270,7 +270,7 @@ function parseRateLimitsResult(value: unknown): RateLimitsResult {
   return asObject(value, "account/rateLimits/read result") as unknown as RateLimitsResult;
 }
 
-function parseModelListResult(value: unknown): ModelListResult {
+export function parseModelListResult(value: unknown): ModelListResult {
   const result = asObject(value, "model/list result");
   if (!Array.isArray(result.data)) {
     throw new Error("Codex model/list result must include a data array.");
@@ -284,9 +284,9 @@ function parseModelListResult(value: unknown): ModelListResult {
 
 function parseCodexModel(value: unknown): CodexModel {
   const model = asObject(value, "Codex model");
-  const supportedReasoningEfforts = model.supportedReasoningEfforts;
+  const supportedReasoningEfforts = model.supportedReasoningEfforts ?? [];
   if (!Array.isArray(supportedReasoningEfforts)) {
-    throw new Error("Codex model must include supportedReasoningEfforts.");
+    throw new Error("Codex model supportedReasoningEfforts must be an array when present.");
   }
 
   return {
