@@ -14,6 +14,7 @@ const FLAGSHIP_BAR_WIDTH = 20;
 const FLAGSHIP_USAGE_START = 6;
 const FLAGSHIP_RESET_START = 11;
 const FLAGSHIP_RESET_WIDTH = FLAGSHIP_COLUMNS - FLAGSHIP_RESET_START;
+const FLAGSHIP_HEADER_RESET_START = FLAGSHIP_COLUMNS - "RESET".length;
 const PUNCTUATION_CODES: Record<string, number> = {
   "!": 37,
   "@": 38,
@@ -146,8 +147,8 @@ function formatFlagshipQuota(
 function flagshipHeaderRow(): string {
   return fixedFlagshipRow([
     { start: 0, text: "CODEX" },
-    { start: FLAGSHIP_USAGE_START, text: "USAGE" },
-    { start: FLAGSHIP_RESET_START, text: "RESET".padStart(FLAGSHIP_RESET_WIDTH, " ") }
+    { start: FLAGSHIP_USAGE_START, text: "REMAINING" },
+    { start: FLAGSHIP_HEADER_RESET_START, text: "RESET" }
   ]);
 }
 
@@ -250,7 +251,7 @@ function percentLabel(remainingRatio: number): string {
 
 function flagshipPercentLabel(remainingRatio: number): string {
   const percent = Math.round(clamp(remainingRatio) * 100);
-  return `${String(percent).padStart(3, " ")}%`;
+  return `${percent}%`;
 }
 
 function timeRemainingRatio(window: QuotaWindow, now: Date): number {
