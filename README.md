@@ -55,7 +55,7 @@ The first two rows are quota windows:
 ```text
 5HGGGRRR    30%
 WKGGGGBB    60%
-0300♥06/22♥0000
+0300♥06/22-0000
 ```
 
 `G`, `R`, and `B` in dry-run output stand for Vestaboard green, red, and blue block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room.

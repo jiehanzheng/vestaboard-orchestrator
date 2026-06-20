@@ -59,9 +59,9 @@ test("renders partial quota when only the five-hour window is present", () => {
 
   assert.ok(snapshot.fiveHour);
   assert.equal(snapshot.weekly, undefined);
-  assert.equal(message.text, "5HGGGGGGGG  80%\nWK          --%\n0244♥--/--♥----");
+  assert.equal(message.text, "5HGGGGGGGG  80%\nWK          --%\n0244♥--/-------");
   assert.deepEqual(message.characters?.[1], [23, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 44, 54]);
-  assert.deepEqual(message.characters?.[2], [36, 28, 30, 30, 62, 44, 44, 59, 44, 44, 62, 44, 44, 44, 44]);
+  assert.deepEqual(message.characters?.[2], [36, 28, 30, 30, 62, 44, 44, 59, 44, 44, 44, 44, 44, 44, 44]);
 });
 
 test("renders remaining quota as green Vestaboard Note character codes", () => {
@@ -146,8 +146,8 @@ test("does not render reset time for unused quota windows", () => {
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[2], "----♥--/--♥----");
-  assert.deepEqual(message.characters?.[2], [44, 44, 44, 44, 62, 44, 44, 59, 44, 44, 62, 44, 44, 44, 44]);
+  assert.equal(message.text.split("\n")[2], "----♥--/-------");
+  assert.deepEqual(message.characters?.[2], [44, 44, 44, 44, 62, 44, 44, 59, 44, 44, 44, 44, 44, 44, 44]);
 });
 
 test("renders reset time only for the used five-hour quota window", () => {
@@ -159,7 +159,7 @@ test("renders reset time only for the used five-hour quota window", () => {
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[2], "0244♥--/--♥----");
+  assert.equal(message.text.split("\n")[2], "0244♥--/-------");
 });
 
 test("renders reset date and time only for the used weekly quota window", () => {
@@ -171,7 +171,7 @@ test("renders reset date and time only for the used weekly quota window", () => 
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-18T21:44:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[2], "----♥06/24♥1419");
+  assert.equal(message.text.split("\n")[2], "----♥06/24-1419");
 });
 
 test("renders red blocks when quota remaining is behind time remaining", () => {
@@ -191,7 +191,7 @@ test("renders red blocks when quota remaining is behind time remaining", () => {
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HGGGRRR    30%\nWKGGGGBB    60%\n0300♥06/22♥0000");
+  assert.equal(message.text, "5HGGGRRR    30%\nWKGGGGBB    60%\n0300♥06/22-0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 63, 63, 63, 0, 0, 0, 0, 29, 36, 54]);
 });
 
@@ -233,7 +233,7 @@ test("renders only green quota blocks when pacing is hidden", () => {
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00"), showPacing: false, staleRows: ["WK"] }
   );
 
-  assert.equal(message.text, "5HGGG       30%\nWKGGGGGG    60%\n0300♥06/22♥0000");
+  assert.equal(message.text, "5HGGG       30%\nWKGGGGGG    60%\n0300♥06/22-0000");
   assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 0, 0, 0, 0, 0, 0, 0, 29, 36, 54]);
   assert.equal(message.text.includes("?"), false);
   assert.equal(message.characters?.flat().includes(63), false);
@@ -509,7 +509,7 @@ test("codex plugin retains ping status-message messages until expiration", async
   assert.equal(first.message.text.split("\n")[2], "PING GPT5.4MINI");
   assert.equal(retained.message.text.split("\n")[2], "PING GPT5.4MINI");
   assert.deepEqual(first.message.characters?.[2], [16, 9, 14, 7, 0, 7, 16, 20, 31, 56, 30, 13, 9, 14, 9]);
-  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24-1419");
   assert.equal(first.priority, "high");
   assert.equal(retained.priority, "high");
   assert.equal(expired.priority, "normal");
@@ -711,7 +711,7 @@ test("codex plugin expires reset available after a later fetch omits reset credi
   assert.equal(retained.priority, "high");
   assert.equal(retained.message.text.split("\n")[2], "RESET AVAILABLE");
   assert.equal(second.priority, "normal");
-  assert.equal(second.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(second.message.text.split("\n")[2], "0244♥06/24-1419");
 });
 
 test("codex plugin keeps stacked refresh message above reset available until it expires", async () => {
@@ -785,7 +785,7 @@ test("codex plugin does not show reset available when weekly quota remains", asy
   const update = await plugin.getUpdate();
 
   assert.equal(update.priority, "normal");
-  assert.equal(update.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(update.message.text.split("\n")[2], "0244♥06/24-1419");
 });
 
 test("codex plugin returns low-priority error message when quota read fails", async () => {
@@ -946,7 +946,7 @@ test("codex plugin expires transient error status after the next successful read
 
   assert.equal(error.message.text.split("\n")[2], "TIMEOUT        ");
   assert.equal(retained.message.text.split("\n")[2], "TIMEOUT        ");
-  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24♥1419");
+  assert.equal(expired.message.text.split("\n")[2], "0244♥06/24-1419");
   assert.equal(error.priority, "high");
   assert.equal(retained.priority, "high");
   assert.equal(expired.priority, "normal");
@@ -1005,7 +1005,7 @@ test("orchestrator asks each plugin for priority and message in one call", async
   });
 
   assert.equal(reads, 1);
-  assert.equal(sent[0]?.text.includes("0244♥06/24♥1419"), true);
+  assert.equal(sent[0]?.text.includes("0244♥06/24-1419"), true);
 });
 
 test("orchestrator accepts numeric priority strings", async () => {
