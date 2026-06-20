@@ -1,4 +1,5 @@
 import type { Plugin, PluginUpdate, Priority } from "../../orchestrator.js";
+import type { VestaboardBoard, VestaboardBoardProvider } from "../../vestaboardTypes.js";
 import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
 import { formatError, formatQuota } from "./display/index.js";
 import {
@@ -12,7 +13,6 @@ import {
   logQuotaReadFailure,
   missingQuotaWindows,
   missingStatus,
-  normalizeQuotaRead,
   QuotaIngredientCache,
   REFRESH_STATUS_MESSAGE_TTL_MS,
   TRANSIENT_STATUS_MESSAGE_TTL_MS,
@@ -20,7 +20,7 @@ import {
 } from "./pluginState.js";
 import { QuotaWindowHistory } from "./quotaWindowHistory.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
-import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot, VestaboardBoard } from "./types.js";
+import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot } from "./types.js";
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -35,7 +35,7 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       showPacing?: boolean;
-      board?: VestaboardBoard | (() => Promise<VestaboardBoard> | VestaboardBoard);
+      board?: VestaboardBoardProvider;
       statusMessage?: () => string | undefined;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
       restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
@@ -53,13 +53,12 @@ export class CodexQuotaPlugin implements Plugin {
     const board = await this.resolveBoard();
 
     try {
-      const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
       const {
         snapshot: freshQuota,
         statusMessage,
         sidecarError,
         rateLimitResetCreditsAvailableCount
-      } = normalizeQuotaRead(quotaRead);
+      } = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
       const missingWindows = missingQuotaWindows(freshQuota);
       this.quotaWindowHistory.recordFreshSnapshot(freshQuota);
       this.quotaCache.update(freshQuota);
@@ -146,8 +145,7 @@ export class CodexQuotaPlugin implements Plugin {
   }
 
   private async resolveBoard(): Promise<VestaboardBoard> {
-    const board = this.options.board ?? "note";
-    return typeof board === "function" ? await board() : board;
+    return this.options.board ? await this.options.board() : "note";
   }
 }
 
@@ -159,7 +157,7 @@ export function createCodexQuotaPlugin({
   showPacing = true,
   autoStartWindow5h = false,
   autoStartWindowWk = false,
-  board = "note",
+  board,
   statusMessage,
   takeDemoMode,
   restoreDemoMode,
@@ -172,13 +170,25 @@ export function createCodexQuotaPlugin({
   now?: () => Date;
 } = {}): CodexQuotaPlugin {
   const quotaWindowHistory = new QuotaWindowHistory();
-  const readQuota = fixture
-    ? readFixtureQuota
+  const readQuota: QuotaPoller = fixture
+    ? async () => ({ snapshot: await readFixtureQuota() })
     : createCodexQuotaPoller({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
       }, quotaWindowHistory);
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, board, statusMessage, takeDemoMode, restoreDemoMode, logger, now, quotaWindowHistory });
+  return new CodexQuotaPlugin(readQuota, {
+    priority,
+    errorPriority,
+    timeZone,
+    showPacing,
+    board,
+    statusMessage,
+    takeDemoMode,
+    restoreDemoMode,
+    logger,
+    now,
+    quotaWindowHistory
+  });
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {

@@ -1,9 +1,10 @@
 import type { VestaboardMessage } from "../../../orchestrator.js";
+import type { VestaboardBoard } from "../../../vestaboardTypes.js";
 import { formatFlagshipError, formatFlagshipQuota } from "./flagship.js";
 import { formatNoteError, formatNoteQuota } from "./note.js";
 import { sanitizeDisplayText } from "./shared.js";
 import type { ResetVisibility } from "../quotaWindowHistory.js";
-import type { QuotaRowName, QuotaSnapshot, VestaboardBoard } from "../types.js";
+import type { QuotaRowName, QuotaSnapshot } from "../types.js";
 
 export { sanitizeDisplayText };
 

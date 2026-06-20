@@ -1,4 +1,4 @@
-export { AutoStartPingState, selectAutoStartModel } from "./autoStartSidecar.js";
+export { selectAutoStartModel } from "./autoStartSidecar.js";
 export type { AutoStartWindowCandidate } from "./autoStartSidecar.js";
 export { formatError, formatQuota } from "./display/index.js";
 export { CodexQuotaPlugin, createCodexQuotaPlugin } from "./plugin.js";

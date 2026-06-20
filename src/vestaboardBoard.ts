@@ -1,4 +1,4 @@
-import type { VestaboardBoard, VestaboardBoardPreference } from "./plugins/codexQuota/types.js";
+import type { VestaboardBoard, VestaboardBoardPreference } from "./vestaboardTypes.js";
 
 export interface VestaboardBoardResolution {
   board: VestaboardBoard;

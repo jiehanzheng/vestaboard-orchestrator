@@ -1,5 +1,5 @@
 import type { VestaboardClient, VestaboardMessage } from "./orchestrator.js";
-import type { VestaboardBoard } from "./plugins/codexQuota/types.js";
+import type { VestaboardBoard } from "./vestaboardTypes.js";
 
 export function createVestaboardClient({
   dryRun,

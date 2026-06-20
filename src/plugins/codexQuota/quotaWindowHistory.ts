@@ -25,7 +25,7 @@ const AUTO_START_PING_COOLDOWN_MS = 30 * 60_000;
 interface WindowHistoryEntry {
   lastSeenResetAtMs?: number;
   stableResetAtMs?: number;
-  pingedResetAtMs?: number;
+  pingAttemptedResetAtMs?: number;
 }
 
 export class QuotaWindowHistory {
@@ -33,7 +33,7 @@ export class QuotaWindowHistory {
     fiveHour: {},
     weekly: {}
   };
-  private lastSuccessfulPingAtMs: number | undefined;
+  private lastPingAttemptAtMs: number | undefined;
 
   recordFreshSnapshot(snapshot: QuotaSnapshot): void {
     this.recordFreshWindow("fiveHour", snapshot.fiveHour);
@@ -62,23 +62,15 @@ export class QuotaWindowHistory {
       : { type: "skip", reason: "no-eligible-window" };
   }
 
-  plan(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig, options: { force: boolean; now: Date }): AutoStartPingPlan {
-    return this.planAutoStart(snapshot, config, options);
-  }
-
-  recordPingSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
-    this.lastSuccessfulPingAtMs = now.getTime();
+  recordPingAttempt(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
+    this.lastPingAttemptAtMs = now.getTime();
     if (plan.trigger === "force") {
       return;
     }
 
     for (const window of plan.windows) {
-      this.windows[window.id].pingedResetAtMs = window.resetAtMs;
+      this.windows[window.id].pingAttemptedResetAtMs = window.resetAtMs;
     }
-  }
-
-  recordSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
-    this.recordPingSuccess(plan, now);
   }
 
   private recordFreshWindow(id: QuotaWindowId, window: QuotaWindow | undefined): void {
@@ -102,8 +94,8 @@ export class QuotaWindowHistory {
   }
 
   private isInCooldown(now: Date): boolean {
-    return this.lastSuccessfulPingAtMs !== undefined
-      && now.getTime() - this.lastSuccessfulPingAtMs < AUTO_START_PING_COOLDOWN_MS;
+    return this.lastPingAttemptAtMs !== undefined
+      && now.getTime() - this.lastPingAttemptAtMs < AUTO_START_PING_COOLDOWN_MS;
   }
 
   private autoStartCandidates(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig): AutoStartWindowCandidate[] {
@@ -124,7 +116,7 @@ export class QuotaWindowHistory {
     }
 
     const resetAtMs = window.resetAt.getTime();
-    return this.windows[id].pingedResetAtMs === resetAtMs ? undefined : { id, row, resetAtMs };
+    return this.windows[id].pingAttemptedResetAtMs === resetAtMs ? undefined : { id, row, resetAtMs };
   }
 }
 

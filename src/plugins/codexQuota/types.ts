@@ -1,4 +1,5 @@
 import type { Priority } from "../../orchestrator.js";
+import type { VestaboardBoardProvider } from "../../vestaboardTypes.js";
 
 export interface QuotaSnapshot {
   fiveHour?: QuotaWindow;
@@ -23,11 +24,9 @@ export interface QuotaPollResult {
   rateLimitResetCreditsAvailableCount?: number;
 }
 
-export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaSnapshot | QuotaPollResult>;
+export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaPollResult>;
 export type QuotaRowName = "5H" | "WK";
 export type Logger = Pick<Console, "warn">;
-export type VestaboardBoard = "note" | "flagship";
-export type VestaboardBoardPreference = VestaboardBoard | "auto";
 
 export interface CodexQuotaPluginOptions {
   fixture?: boolean;
@@ -37,6 +36,6 @@ export interface CodexQuotaPluginOptions {
   autoStartWindow5h?: boolean;
   autoStartWindowWk?: boolean;
   showPacing?: boolean;
-  board?: VestaboardBoard | (() => Promise<VestaboardBoard> | VestaboardBoard);
+  board?: VestaboardBoardProvider;
   statusMessage?: () => string | undefined;
 }

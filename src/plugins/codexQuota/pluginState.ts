@@ -1,18 +1,13 @@
 import type { Priority, VestaboardMessage } from "../../orchestrator.js";
+import { priorityValue } from "../../priority.js";
 import { sanitizeDisplayText } from "./display/index.js";
-import type { Logger, QuotaPollResult, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
+import type { Logger, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
 
 export const REFRESH_STATUS_MESSAGE_TTL_MS = 5 * 60_000;
 export const TRANSIENT_STATUS_MESSAGE_TTL_MS = 1_000;
 
 const STATUS_MESSAGE_PRIORITY = "high";
-const PRIORITY_VALUES: Record<string, number> = {
-  none: 0,
-  low: 10,
-  normal: 50,
-  high: 80,
-  urgent: 100
-};
+const STATUS_MESSAGE_PRIORITY_VALUE = priorityValue(STATUS_MESSAGE_PRIORITY);
 
 interface QuotaCacheState {
   hasFiveHour: boolean;
@@ -23,14 +18,6 @@ interface QuotaCacheState {
 interface StatusMessage {
   message: string;
   expiresAt: Date;
-}
-
-export function normalizeQuotaRead(result: QuotaSnapshot | QuotaPollResult): QuotaPollResult {
-  if ("snapshot" in result) {
-    return result;
-  }
-
-  return { snapshot: result };
 }
 
 export class StatusMessageStack {
@@ -171,7 +158,7 @@ export function logAutoStartFailure(logger: Logger | undefined, error: unknown):
 }
 
 export function bumpStatusPriority(priority: Priority): Priority {
-  return priorityValue(priority) >= PRIORITY_VALUES[STATUS_MESSAGE_PRIORITY] ? priority : STATUS_MESSAGE_PRIORITY;
+  return priorityValue(priority) >= STATUS_MESSAGE_PRIORITY_VALUE ? priority : STATUS_MESSAGE_PRIORITY;
 }
 
 function cloneOptionalQuotaWindow(window: QuotaWindow | undefined): QuotaWindow | undefined {
@@ -210,19 +197,4 @@ function summarizeFailure(error: unknown): string {
   if (normalized.includes("RATE LIMIT")) return "rate_limit";
   if (normalized.includes("BUBBLEWRAP")) return "bubblewrap";
   return "unknown";
-}
-
-function priorityValue(priority: Priority): number {
-  if (typeof priority === "number" && Number.isFinite(priority)) {
-    return priority;
-  }
-
-  const normalized = String(priority).trim().toLowerCase();
-  const namedPriority = PRIORITY_VALUES[normalized];
-  if (namedPriority !== undefined) {
-    return namedPriority;
-  }
-
-  const numericPriority = Number(normalized);
-  return Number.isFinite(numericPriority) ? numericPriority : 0;
 }
