@@ -587,6 +587,62 @@ test("codex plugin hides a changed full-window reset until it repeats", async ()
   assert.equal(repeated.message.text.split("\n")[2], "0744♥06/24-1419");
 });
 
+test("codex plugin demo drop shows five-hour reset immediately without weekly visibility", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  }), {
+    priority: "normal",
+    errorPriority: "low",
+    timeZone: "America/Los_Angeles",
+    takeDemoMode: () => ({ pctDrops: 1 }),
+    now: () => new Date("2026-06-18T21:44:00-07:00")
+  });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.message.text.split("\n")[0], "5HGGGGGGGGGG99%");
+  assert.equal(update.message.text.split("\n")[2], "0244♥--/-------");
+});
+
+test("codex plugin demo drop does not create stable full-window history", async () => {
+  let reads = 0;
+  let demoAvailable = true;
+  const snapshots = [
+    quotaSnapshot({ fiveHour: 1, weekly: 1 }),
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 },
+      weekly: quotaSnapshot({ weekly: 1 }).weekly
+    },
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 },
+      weekly: quotaSnapshot({ weekly: 1 }).weekly
+    }
+  ];
+  const plugin = new CodexQuotaPlugin(async () => snapshots[reads++] ?? snapshots.at(-1)!, {
+    priority: "normal",
+    errorPriority: "low",
+    timeZone: "America/Los_Angeles",
+    takeDemoMode: () => {
+      if (!demoAvailable) {
+        return undefined;
+      }
+
+      demoAvailable = false;
+      return { pctDrops: 1 };
+    },
+    now: () => new Date("2026-06-19T00:00:00-07:00")
+  });
+
+  const demo = await plugin.getUpdate();
+  const changed = await plugin.getUpdate();
+  const repeated = await plugin.getUpdate();
+
+  assert.equal(demo.message.text.split("\n")[2], "0244♥--/-------");
+  assert.equal(changed.message.text.split("\n")[2], "----♥06/24-1419");
+  assert.equal(repeated.message.text.split("\n")[2], "0744♥06/24-1419");
+});
+
 test("codex plugin retains ping status-message messages until expiration", async () => {
   let now = new Date("2026-06-19T00:00:00-07:00");
   let reads = 0;

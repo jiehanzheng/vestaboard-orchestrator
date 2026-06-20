@@ -75,14 +75,15 @@ export class CodexQuotaPlugin implements Plugin {
       }
 
       const displayStatusMessage = this.statusMessages.top(now) ?? this.options.statusMessage?.();
-      const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
+      const renderedQuota = applyCodexQuotaDemo(displayQuota, demoMode);
+      const message = formatQuota(renderedQuota, {
         timeZone: this.options.timeZone,
         now,
         showPacing: this.options.showPacing,
         board,
         statusMessage: displayStatusMessage,
         staleRows,
-        resetVisibility: this.quotaWindowHistory.resetVisibilityFor(displayQuota)
+        resetVisibility: this.quotaWindowHistory.resetVisibilityFor(renderedQuota)
       });
 
       if (missingWindows.length > 0) {
