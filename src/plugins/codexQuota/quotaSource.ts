@@ -85,7 +85,7 @@ async function readCodexQuotaWithSidecar(
 
       return {
         snapshot,
-        thirdRowMessage: autoStart.statusMessage,
+        statusMessage: autoStart.statusMessage,
         rateLimitResetCreditsAvailableCount
       };
     } catch (sidecarError) {

@@ -18,7 +18,7 @@ export interface QuotaPollOptions {
 
 export interface QuotaPollResult {
   snapshot: QuotaSnapshot;
-  thirdRowMessage?: string;
+  statusMessage?: string;
   sidecarError?: unknown;
   rateLimitResetCreditsAvailableCount?: number;
 }
@@ -26,6 +26,8 @@ export interface QuotaPollResult {
 export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaSnapshot | QuotaPollResult>;
 export type QuotaRowName = "5H" | "WK";
 export type Logger = Pick<Console, "warn">;
+export type VestaboardBoard = "note" | "flagship";
+export type VestaboardBoardPreference = VestaboardBoard | "auto";
 
 export interface CodexQuotaPluginOptions {
   fixture?: boolean;
@@ -35,4 +37,6 @@ export interface CodexQuotaPluginOptions {
   autoStartWindow5h?: boolean;
   autoStartWindowWk?: boolean;
   showPacing?: boolean;
+  board?: VestaboardBoard | (() => Promise<VestaboardBoard> | VestaboardBoard);
+  statusMessage?: () => string | undefined;
 }

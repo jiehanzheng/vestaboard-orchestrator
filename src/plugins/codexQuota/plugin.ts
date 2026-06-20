@@ -3,7 +3,7 @@ import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
 import { formatError, formatQuota } from "./display.js";
 import {
   autoStartErrorStatus,
-  bumpThirdRowPriority,
+  bumpStatusPriority,
   cachedRowsPresentIn,
   cachedRowsUsedFor,
   errorStatus,
@@ -14,17 +14,17 @@ import {
   missingStatus,
   normalizeQuotaRead,
   QuotaIngredientCache,
-  REFRESH_THIRD_ROW_MESSAGE_TTL_MS,
-  TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS,
-  ThirdRowMessageStack
+  REFRESH_STATUS_MESSAGE_TTL_MS,
+  TRANSIENT_STATUS_MESSAGE_TTL_MS,
+  StatusMessageStack
 } from "./pluginState.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
-import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot } from "./types.js";
+import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot, VestaboardBoard } from "./types.js";
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
   private readonly quotaCache = new QuotaIngredientCache();
-  private readonly thirdRowMessages = new ThirdRowMessageStack();
+  private readonly statusMessages = new StatusMessageStack();
 
   constructor(
     private readonly readQuota: QuotaPoller,
@@ -33,6 +33,8 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       showPacing?: boolean;
+      board?: VestaboardBoard | (() => Promise<VestaboardBoard> | VestaboardBoard);
+      statusMessage?: () => string | undefined;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
       restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
       logger?: Logger;
@@ -43,12 +45,13 @@ export class CodexQuotaPlugin implements Plugin {
   async getUpdate(): Promise<PluginUpdate> {
     const now = this.options.now?.() ?? new Date();
     const demoMode = this.options.takeDemoMode?.();
+    const board = await this.resolveBoard();
 
     try {
       const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
       const {
         snapshot: freshQuota,
-        thirdRowMessage,
+        statusMessage,
         sidecarError,
         rateLimitResetCreditsAvailableCount
       } = normalizeQuotaRead(quotaRead);
@@ -56,21 +59,22 @@ export class CodexQuotaPlugin implements Plugin {
       this.quotaCache.update(freshQuota);
       const displayQuota = this.quotaCache.merge(freshQuota);
       const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
-      this.pushStatusRows(now, thirdRowMessage, sidecarError, missingWindows);
+      this.pushStatusMessages(now, statusMessage, sidecarError, missingWindows);
       const resetStatus = resetAvailableStatus(freshQuota, rateLimitResetCreditsAvailableCount);
       if (resetStatus) {
-        this.thirdRowMessages.pushLow(resetStatus, now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
+        this.statusMessages.pushLow(resetStatus, now, TRANSIENT_STATUS_MESSAGE_TTL_MS);
       }
       if (sidecarError) {
         logAutoStartFailure(this.options.logger, sidecarError);
       }
 
-      const statusRow = this.thirdRowMessages.top(now);
+      const displayStatusMessage = this.statusMessages.top(now) ?? this.options.statusMessage?.();
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
         now,
         showPacing: this.options.showPacing,
-        statusRow,
+        board,
+        statusMessage: displayStatusMessage,
         staleRows
       });
 
@@ -80,55 +84,61 @@ export class CodexQuotaPlugin implements Plugin {
 
       const priority = missingWindows.length > 0 ? this.options.errorPriority : this.options.priority;
       return {
-        priority: statusRow ? bumpThirdRowPriority(priority) : priority,
+        priority: displayStatusMessage ? bumpStatusPriority(priority) : priority,
         message
       };
     } catch (error) {
       if (demoMode) {
         this.options.restoreDemoMode?.(demoMode);
       }
-      return this.fallbackUpdate(error, now);
+      return this.fallbackUpdate(error, now, board);
     }
   }
 
-  private fallbackUpdate(error: unknown, now: Date): PluginUpdate {
+  private fallbackUpdate(error: unknown, now: Date, board: VestaboardBoard): PluginUpdate {
     const cachedQuota = this.quotaCache.snapshot();
-    this.thirdRowMessages.push(errorStatus(error), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
-    const statusRow = this.quotaCache.hasAny() ? this.thirdRowMessages.top(now) : undefined;
+    this.statusMessages.push(errorStatus(error), now, TRANSIENT_STATUS_MESSAGE_TTL_MS);
+    const displayStatusMessage = this.quotaCache.hasAny() ? this.statusMessages.top(now) : undefined;
     const message = this.quotaCache.hasAny()
       ? formatQuota(cachedQuota, {
           timeZone: this.options.timeZone,
           now,
           showPacing: this.options.showPacing,
-          statusRow,
+          board,
+          statusMessage: displayStatusMessage,
           staleRows: cachedRowsPresentIn(cachedQuota)
         })
-      : formatError(error);
+      : formatError(error, { board });
     logQuotaReadFailure(this.options.logger, error, this.options.errorPriority, message, this.quotaCache.state());
 
     return {
-      priority: statusRow ? bumpThirdRowPriority(this.options.errorPriority) : this.options.errorPriority,
+      priority: displayStatusMessage ? bumpStatusPriority(this.options.errorPriority) : this.options.errorPriority,
       message
     };
   }
 
-  private pushStatusRows(
+  private pushStatusMessages(
     now: Date,
-    thirdRowMessage: string | undefined,
+    statusMessage: string | undefined,
     sidecarError: unknown,
     missingWindows: ("5H" | "WK")[]
   ): void {
-    if (thirdRowMessage) {
-      this.thirdRowMessages.push(thirdRowMessage, now, REFRESH_THIRD_ROW_MESSAGE_TTL_MS);
+    if (statusMessage) {
+      this.statusMessages.push(statusMessage, now, REFRESH_STATUS_MESSAGE_TTL_MS);
     }
 
     if (sidecarError) {
-      this.thirdRowMessages.push(autoStartErrorStatus(), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
+      this.statusMessages.push(autoStartErrorStatus(), now, TRANSIENT_STATUS_MESSAGE_TTL_MS);
     }
 
     if (missingWindows.length > 0) {
-      this.thirdRowMessages.push(missingStatus(missingWindows), now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
+      this.statusMessages.push(missingStatus(missingWindows), now, TRANSIENT_STATUS_MESSAGE_TTL_MS);
     }
+  }
+
+  private async resolveBoard(): Promise<VestaboardBoard> {
+    const board = this.options.board ?? "note";
+    return typeof board === "function" ? await board() : board;
   }
 }
 
@@ -140,6 +150,8 @@ export function createCodexQuotaPlugin({
   showPacing = true,
   autoStartWindow5h = false,
   autoStartWindowWk = false,
+  board = "note",
+  statusMessage,
   takeDemoMode,
   restoreDemoMode,
   logger = console,
@@ -156,7 +168,7 @@ export function createCodexQuotaPlugin({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
       });
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, takeDemoMode, restoreDemoMode, logger, now });
+  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, board, statusMessage, takeDemoMode, restoreDemoMode, logger, now });
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {

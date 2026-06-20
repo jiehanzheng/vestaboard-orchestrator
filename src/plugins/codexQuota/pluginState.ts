@@ -2,10 +2,10 @@ import type { Priority, VestaboardMessage } from "../../orchestrator.js";
 import { sanitizeDisplayText } from "./display.js";
 import type { Logger, QuotaPollResult, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
 
-export const REFRESH_THIRD_ROW_MESSAGE_TTL_MS = 5 * 60_000;
-export const TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS = 1_000;
+export const REFRESH_STATUS_MESSAGE_TTL_MS = 5 * 60_000;
+export const TRANSIENT_STATUS_MESSAGE_TTL_MS = 1_000;
 
-const THIRD_ROW_PRIORITY = "high";
+const STATUS_MESSAGE_PRIORITY = "high";
 const PRIORITY_VALUES: Record<string, number> = {
   none: 0,
   low: 10,
@@ -20,7 +20,7 @@ interface QuotaCacheState {
   updatedAt?: string;
 }
 
-interface ThirdRowMessage {
+interface StatusMessage {
   message: string;
   expiresAt: Date;
 }
@@ -33,8 +33,8 @@ export function normalizeQuotaRead(result: QuotaSnapshot | QuotaPollResult): Quo
   return { snapshot: result };
 }
 
-export class ThirdRowMessageStack {
-  private messages: ThirdRowMessage[] = [];
+export class StatusMessageStack {
+  private messages: StatusMessage[] = [];
 
   push(message: string, now: Date, ttlMs: number): void {
     this.messages.push({ message, expiresAt: new Date(now.getTime() + ttlMs) });
@@ -170,8 +170,8 @@ export function logAutoStartFailure(logger: Logger | undefined, error: unknown):
   });
 }
 
-export function bumpThirdRowPriority(priority: Priority): Priority {
-  return priorityValue(priority) >= PRIORITY_VALUES[THIRD_ROW_PRIORITY] ? priority : THIRD_ROW_PRIORITY;
+export function bumpStatusPriority(priority: Priority): Priority {
+  return priorityValue(priority) >= PRIORITY_VALUES[STATUS_MESSAGE_PRIORITY] ? priority : STATUS_MESSAGE_PRIORITY;
 }
 
 function cloneOptionalQuotaWindow(window: QuotaWindow | undefined): QuotaWindow | undefined {

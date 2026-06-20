@@ -1,6 +1,7 @@
 import { DemoSignalController } from "./demoSignals.js";
 import { createCodexQuotaPlugin } from "./plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick } from "./orchestrator.js";
+import { boardPreferenceFromEnv, createVestaboardBoardResolver } from "./vestaboardBoard.js";
 import { createVestaboardClient } from "./vestaboard.js";
 
 const args = process.argv.slice(2);
@@ -18,6 +19,11 @@ const vestaboard = createVestaboardClient({
   cloudUrl: process.env.VESTABOARD_CLOUD_URL,
   localUrl: process.env.VESTABOARD_LOCAL_URL
 });
+const boardResolver = createVestaboardBoardResolver({
+  preference: boardPreferenceFromEnv(process.env.VESTABOARD_BOARD),
+  detectBoard: vestaboard.detectBoard,
+  logger: console
+});
 
 const plugins = [
   createCodexQuotaPlugin({
@@ -26,6 +32,8 @@ const plugins = [
     errorPriority: process.env.CODEX_QUOTA_ERROR_PRIORITY ?? "low",
     timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
     showPacing: envOnOff(process.env.CODEX_QUOTA_SHOW_PACING, true),
+    board: () => boardResolver.resolve(),
+    statusMessage: () => boardResolver.resolution().source === "assumed" ? "VB SIZE PEND" : undefined,
     autoStartWindow5h: envFlag(process.env.CODEX_AUTO_START_WINDOW_5H),
     autoStartWindowWk: envFlag(process.env.CODEX_AUTO_START_WINDOW_WK),
     takeDemoMode: () => demoSignals.take(),

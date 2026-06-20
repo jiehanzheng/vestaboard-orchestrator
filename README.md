@@ -33,6 +33,7 @@ Core environment variables configure the orchestrator and Vestaboard transport. 
 | `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
 | `VESTABOARD_LOCAL_API_KEY` | | Local API key. If set, the orchestrator uses the local API instead of cloud. |
 | `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
+| `VESTABOARD_BOARD` | `auto` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the Cloud API layout and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick. |
 
 The loop is serial: it runs one plugin pass, sends the selected message, waits `ORCHESTRATOR_INTERVAL_MINUTES`, then starts the next pass. If the winning message is unchanged from the last successful send, the orchestrator skips the Vestaboard API call.
 
@@ -40,13 +41,14 @@ The loop is serial: it runs one plugin pass, sends the selected message, waits `
 
 ### Codex
 
-The Codex plugin reads `account/rateLimits/read` from `codex app-server` and renders the 5-hour and weekly quota windows into two 15-column Vestaboard rows.
+The Codex plugin reads `account/rateLimits/read` from `codex app-server` and renders the 5-hour and weekly quota windows for Vestaboard Note and Flagship.
 
-| Story | Screenshot | What it means |
+| Configuration | Screenshot | What it means |
 | --- | --- | --- |
 | Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Green blocks are quota remaining. Red blocks mean quota is behind the time-remaining pace. Blue blocks mean quota is ahead of pace. |
 | Pacing off | ![Codex quota without pacing colors](docs/images/codex-pacing-off.png) | `CODEX_QUOTA_SHOW_PACING=off` hides pacing entirely: only green quota blocks and blanks remain. This is the clean, quiet mode for just checking remaining quota. |
-| Auto-start ping | ![Codex full quota ping status](docs/images/codex-ping.png) | When a watched window is still full at 100%, the plugin can send one minimal Codex ping to start a real reset window. The third row briefly shows the ping model. |
+| Auto-start ping | ![Codex full quota ping status](docs/images/codex-ping.png) | When a watched window is still full at 100%, the plugin can send one minimal Codex ping to start a real reset window. The status lane briefly shows the ping model. |
+| Flagship | ![Codex quota on Vestaboard Flagship](docs/images/codex-flagship.png) | `VESTABOARD_BOARD=flagship` or auto-detected Flagship uses a 6x22 layout with 20-cell centered bars, right-aligned reset labels, and a final-row status lane. |
 
 The first two rows are quota windows:
 
@@ -56,11 +58,13 @@ WKGGGGBB    60%
 0300♥06/22♥0000
 ```
 
-`G`, `R`, and `B` in dry-run output stand for Vestaboard green, red, and blue block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` so the row still fits.
+`G`, `R`, and `B` in dry-run output stand for Vestaboard green, red, and blue block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room.
 
-The third row normally shows reset timing: 5-hour reset time, weekly reset date, and weekly reset time. It is also a short-lived status row. Current-cycle statuses, fetch failures, missing quota windows, reset availability, and auto-start ping notices temporarily replace reset timing; expired statuses are pruned on later ticks.
+On Note, the status lane is the third physical row. It normally shows reset timing: 5-hour reset time, weekly reset date, and weekly reset time. Current-cycle statuses, fetch failures, missing quota windows, reset availability, and auto-start ping notices temporarily replace reset timing; expired statuses are pruned on later ticks.
 
-If Codex is temporarily unavailable after a successful read, the plugin can reuse cached quota ingredients and mark the board with a short third-row status instead of throwing away the display.
+On Vestaboard Flagship, the same quota data renders as a 6-row by 22-column layout. Reset timing moves into the 5-hour and weekly rows, the progress bars expand to 20 centered cells, and the final row stays blank unless the shared status lane has an active status such as `RESET AVAILABLE`, `AUTO PING FAIL`, `MISS WK`, `TIMEOUT`, or `FETCH FAIL`.
+
+If Codex is temporarily unavailable after a successful read, the plugin can reuse cached quota ingredients and mark the board with a short status-lane message instead of throwing away the display.
 
 #### Codex Login
 
@@ -93,7 +97,7 @@ If the host login directory is somewhere else, set `CODEX_HOST_DIR` in `.env` to
 
 When auto-start is enabled, the plugin lists visible Codex models, skips `-spark` models, prefers the last `-nano` model, then the last `-mini` model, then the last remaining model. It sends a read-only ephemeral prompt: `Reply exactly: ok. Do not inspect files or run commands.` A running process auto-starts at most once per reset timestamp and never pings more than once every 30 minutes unless forced by demo mode.
 
-When the weekly quota row is exhausted at 0% and `account/rateLimits/read` reports reset credits are available, the third row shows `RESET AVAILABLE`. The plugin only displays that read-only account status; it does not invoke a reset.
+When the weekly quota row is exhausted at 0% and `account/rateLimits/read` reports reset credits are available, the status lane shows `RESET AVAILABLE`. The plugin only displays that read-only account status; it does not invoke a reset.
 
 #### Demo Mode
 
@@ -107,7 +111,7 @@ The long-running process can render one realistic Codex quota demo without resta
 
 ```sh
 kill -HUP <pid>   # drop one percentage point from 5H remaining quota
-kill -USR2 <pid>  # force a Codex ping and show the retained third-row ping message
+kill -USR2 <pid>  # force a Codex ping and show the retained status-lane ping message
 ```
 
 Signals are cumulative for the running process. Two `SIGHUP`s render a two-point drop, and later demo signals continue from the accumulated demo offset. `SIGUSR2` bypasses auto-start env flags, the 30-minute ping cooldown, and the unused-window check so the ping path can be tested on demand.
