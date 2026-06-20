@@ -47,21 +47,21 @@ export function formatQuota(
     staleRows?: QuotaRowName[];
     showPacing?: boolean;
     board?: VestaboardBoard;
-  } | string = {}
+  } = {}
 ): VestaboardMessage {
-  const timeZone = typeof options === "string" ? options : options.timeZone;
-  const now = typeof options === "string" ? new Date() : (options.now ?? new Date());
-  const staleRows = typeof options === "string" ? [] : (options.staleRows ?? []);
-  const showPacing = typeof options === "string" ? true : (options.showPacing ?? true);
-  const board = typeof options === "string" ? "note" : (options.board ?? "note");
+  const timeZone = options.timeZone;
+  const now = options.now ?? new Date();
+  const staleRows = options.staleRows ?? [];
+  const showPacing = options.showPacing ?? true;
+  const board = options.board ?? "note";
 
   if (board === "flagship") {
-    return formatFlagshipQuota(snapshot, { timeZone, now, statusMessage: typeof options === "string" ? undefined : options.statusMessage, staleRows, showPacing });
+    return formatFlagshipQuota(snapshot, { timeZone, now, statusMessage: options.statusMessage, staleRows, showPacing });
   }
 
   const fiveHour = noteQuotaLine("5H", snapshot.fiveHour, now, staleRows.includes("5H"), showPacing);
   const weekly = noteQuotaLine("WK", snapshot.weekly, now, staleRows.includes("WK"), showPacing);
-  const reset = typeof options === "string" || !options.statusMessage
+  const reset = !options.statusMessage
     ? resetLine(snapshot.fiveHour, snapshot.weekly, timeZone)
     : statusLine(options.statusMessage);
 
@@ -266,7 +266,7 @@ function resetLine(fiveHour: QuotaWindow | undefined, weekly: QuotaWindow | unde
   const fiveHourReset = shouldShowReset(fiveHour) ? hhmm(fiveHour.resetAt, timeZone) : "----";
   const weeklyDate = shouldShowReset(weekly) ? mmdd(weekly.resetAt, timeZone) : "--/--";
   const weeklyTime = shouldShowReset(weekly) ? hhmm(weekly.resetAt, timeZone) : "----";
-  return `${fiveHourReset}♥${weeklyDate}♥${weeklyTime}`;
+  return `${fiveHourReset}♥${weeklyDate}-${weeklyTime}`;
 }
 
 function shouldShowReset(window: QuotaWindow | undefined): window is QuotaWindow {
