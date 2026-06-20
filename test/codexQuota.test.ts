@@ -1258,7 +1258,7 @@ test("codex plugin can show board-size pending status in the Note status lane", 
     priority: "normal",
     errorPriority: "low",
     timeZone: "America/Los_Angeles",
-    board: "note",
+    board: async () => "note",
     statusMessage: () => "VB SIZE PEND"
   });
 

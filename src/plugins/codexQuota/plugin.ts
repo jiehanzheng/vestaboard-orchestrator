@@ -145,8 +145,7 @@ export class CodexQuotaPlugin implements Plugin {
   }
 
   private async resolveBoard(): Promise<VestaboardBoard> {
-    const board = this.options.board ?? "note";
-    return typeof board === "function" ? await board() : board;
+    return this.options.board ? await this.options.board() : "note";
   }
 }
 
@@ -158,7 +157,7 @@ export function createCodexQuotaPlugin({
   showPacing = true,
   autoStartWindow5h = false,
   autoStartWindowWk = false,
-  board = "note",
+  board,
   statusMessage,
   takeDemoMode,
   restoreDemoMode,
@@ -177,7 +176,19 @@ export function createCodexQuotaPlugin({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
       }, quotaWindowHistory);
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, board, statusMessage, takeDemoMode, restoreDemoMode, logger, now, quotaWindowHistory });
+  return new CodexQuotaPlugin(readQuota, {
+    priority,
+    errorPriority,
+    timeZone,
+    showPacing,
+    board,
+    statusMessage,
+    takeDemoMode,
+    restoreDemoMode,
+    logger,
+    now,
+    quotaWindowHistory
+  });
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {
