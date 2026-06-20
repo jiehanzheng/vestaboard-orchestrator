@@ -1,6 +1,11 @@
-export const GREEN = 66;
 export const RED = 63;
+export const ORANGE = 64;
+export const YELLOW = 65;
+export const GREEN = 66;
 export const BLUE = 67;
+export const VIOLET = 68;
+export const WHITE = 69;
+export const BLACK = 70;
 export const HEART = 62;
 export const BLANK = 0;
 

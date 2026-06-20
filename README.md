@@ -45,7 +45,7 @@ The Codex plugin reads `account/rateLimits/read` from `codex app-server` and ren
 
 | Configuration | Screenshot | What it means |
 | --- | --- | --- |
-| Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Green & blue blocks are quota remaining. <br>Red blocks mean quota is behind the time-remaining pace (you should slow down). <br>Blue blocks mean quota is ahead of pace (you can use more). |
+| Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Colored blocks are quota remaining. <br>Green means quota is at or ahead of the time-remaining pace. Yellow, orange, and red mean progressively worse pacing deficits. <br>White is the current time marker and always overrides the quota color. |
 | Pacing off | ![Codex quota without pacing colors](docs/images/codex-pacing-off.png) | `CODEX_QUOTA_SHOW_PACING=off` hides pacing entirely: only green quota blocks and blanks remain. This is the clean, quiet mode for just checking remaining quota. |
 | Auto-start ping | ![Codex full quota ping status](docs/images/codex-ping.png) | Only if enabled: when a watched window is still full at 100%, the plugin can send one minimal Codex ping to start a real reset window. The status lane briefly shows the ping model. |
 | Flagship | ![Codex quota on Vestaboard Flagship](docs/images/codex-flagship.png) | This plugin supports Flagship boards' 6x22 layout as well -- with 20-cell centered bars, right-aligned reset labels, and a final-row status lane. |
@@ -53,12 +53,12 @@ The Codex plugin reads `account/rateLimits/read` from `codex app-server` and ren
 The first two rows are quota windows:
 
 ```text
-5HGGGRRR    30%
-WKGGGGBB    60%
+5HRRR   W   30%
+WKGGGGWG    60%
 0300♥06/22-0000
 ```
 
-`G`, `R`, and `B` in dry-run output stand for Vestaboard green, red, and blue block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room.
+`G`, `Y`, `O`, `R`, and `W` in dry-run output stand for Vestaboard green, yellow, orange, red, and white block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room.
 
 On Note, the status lane is the third physical row. It normally shows reset timing: 5-hour reset time, weekly reset date, and weekly reset time. Current-cycle statuses, fetch failures, missing quota windows, reset availability, and auto-start ping notices temporarily replace reset timing; expired statuses are pruned on later ticks.
 
