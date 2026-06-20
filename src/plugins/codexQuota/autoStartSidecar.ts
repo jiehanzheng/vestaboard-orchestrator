@@ -1,5 +1,11 @@
 import type { CodexAppServerClient } from "./appServer.js";
-import type { QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
+import {
+  QuotaWindowHistory,
+  type AutoStartPingPlan,
+  type AutoStartQuotaConfig,
+  type AutoStartWindowCandidate
+} from "./quotaWindowHistory.js";
+import type { QuotaSnapshot } from "./types.js";
 
 interface ModelListResult {
   data: CodexModel[];
@@ -29,32 +35,13 @@ interface TurnStartResult {
   };
 }
 
-export interface AutoStartQuotaConfig {
-  fiveHour: boolean;
-  weekly: boolean;
-}
-
-type AutoStartWindowId = "fiveHour" | "weekly";
-
-export interface AutoStartWindowCandidate {
-  id: AutoStartWindowId;
-  row: QuotaRowName;
-  resetAtMs: number;
-}
-
-type AutoStartPingPlan =
-  | { type: "skip"; reason: "no-eligible-window" | "cooldown" }
-  | { type: "ping"; trigger: "force"; windows: [] }
-  | { type: "ping"; trigger: "unused-quota"; windows: AutoStartWindowCandidate[] };
-
 const AUTO_START_BASE_INSTRUCTIONS = "Obey exactly.";
 const AUTO_START_PROMPT = "Reply exactly: ok. Do not inspect files or run commands.";
-const AUTO_START_PING_COOLDOWN_MS = 30 * 60_000;
 
 export class CodexAutoStartSidecar {
   constructor(
     private readonly config: AutoStartQuotaConfig,
-    private readonly state = new AutoStartPingState()
+    private readonly history = new QuotaWindowHistory()
   ) {}
 
   async afterQuotaRead({
@@ -68,7 +55,7 @@ export class CodexAutoStartSidecar {
     force: boolean;
     now: Date;
   }): Promise<{ statusMessage?: string }> {
-    const plan = this.state.plan(snapshot, this.config, { force, now });
+    const plan = this.history.planAutoStart(snapshot, this.config, { force, now });
     if (plan.type === "skip") {
       return {};
     }
@@ -76,65 +63,8 @@ export class CodexAutoStartSidecar {
     const models = await readAllModels(client);
     const selection = selectAutoStartModel(models);
     await sendAutoStartPrompt(client, selection);
-    this.state.recordSuccess(plan, new Date());
+    this.history.recordPingSuccess(plan, new Date());
     return { statusMessage: autoStartPingMessage(selection) };
-  }
-}
-
-export class AutoStartPingState {
-  private lastSuccessfulPingAtMs: number | undefined;
-  private pingedResetAtMsByWindow: Partial<Record<AutoStartWindowId, number>> = {};
-
-  plan(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig, options: { force: boolean; now: Date }): AutoStartPingPlan {
-    if (options.force) {
-      return { type: "ping", trigger: "force", windows: [] };
-    }
-
-    if (this.isInCooldown(options.now)) {
-      return { type: "skip", reason: "cooldown" };
-    }
-
-    const windows = this.eligibleWindows(snapshot, config);
-    return windows.length > 0
-      ? { type: "ping", trigger: "unused-quota", windows }
-      : { type: "skip", reason: "no-eligible-window" };
-  }
-
-  recordSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
-    this.lastSuccessfulPingAtMs = now.getTime();
-    if (plan.trigger === "force") {
-      return;
-    }
-
-    for (const window of plan.windows) {
-      this.pingedResetAtMsByWindow[window.id] = window.resetAtMs;
-    }
-  }
-
-  private isInCooldown(now: Date): boolean {
-    return this.lastSuccessfulPingAtMs !== undefined
-      && now.getTime() - this.lastSuccessfulPingAtMs < AUTO_START_PING_COOLDOWN_MS;
-  }
-
-  private eligibleWindows(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig): AutoStartWindowCandidate[] {
-    return [
-      this.windowCandidate("fiveHour", "5H", config.fiveHour, snapshot.fiveHour),
-      this.windowCandidate("weekly", "WK", config.weekly, snapshot.weekly)
-    ].filter((window): window is AutoStartWindowCandidate => window !== undefined);
-  }
-
-  private windowCandidate(
-    id: AutoStartWindowId,
-    row: QuotaRowName,
-    enabled: boolean,
-    window: QuotaWindow | undefined
-  ): AutoStartWindowCandidate | undefined {
-    if (!enabled || !isUnusedQuotaWindow(window)) {
-      return undefined;
-    }
-
-    const resetAtMs = window.resetAt.getTime();
-    return this.pingedResetAtMsByWindow[id] === resetAtMs ? undefined : { id, row, resetAtMs };
   }
 }
 
@@ -157,10 +87,6 @@ export function selectAutoStartModel(models: CodexModel[]): { model: string; rea
     model: selectedModel.model,
     reasoningEffort
   };
-}
-
-function isUnusedQuotaWindow(window: QuotaWindow | undefined): window is QuotaWindow {
-  return window !== undefined && clamp(window.remainingRatio) >= 1;
 }
 
 function autoStartPingMessage(selection: { model: string; reasoningEffort: string }): string {
@@ -211,6 +137,5 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
   await client.waitForTurnCompletion(thread.thread.id, turn.turn.id);
 }
 
-function clamp(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
+export { QuotaWindowHistory as AutoStartPingState };
+export type { AutoStartPingPlan, AutoStartQuotaConfig, AutoStartWindowCandidate };
