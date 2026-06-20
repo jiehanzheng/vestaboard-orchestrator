@@ -48,7 +48,7 @@ The Codex plugin reads `account/rateLimits/read` from `codex app-server` and ren
 | Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Green & blue blocks are quota remaining. <br>Red blocks mean quota is behind the time-remaining pace (you should slow down). <br>Blue blocks mean quota is ahead of pace (you can use more). |
 | Pacing off | ![Codex quota without pacing colors](docs/images/codex-pacing-off.png) | `CODEX_QUOTA_SHOW_PACING=off` hides pacing entirely: only green quota blocks and blanks remain. This is the clean, quiet mode for just checking remaining quota. |
 | Auto-start ping | ![Codex full quota ping status](docs/images/codex-ping.png) | Only if enabled: when a watched window is still full at 100%, the plugin can send one minimal Codex ping to start a real reset window. The status lane briefly shows the ping model. |
-| Flagship | ![Codex quota on Vestaboard Flagship](docs/images/codex-flagship.png) | Auto-detected Flagship boards use a 6x22 layout with 20-cell centered bars, right-aligned reset labels, and a final-row status lane. |
+| Flagship | ![Codex quota on Vestaboard Flagship](docs/images/codex-flagship.png) | This plugin supports Flagship boards' 6x22 layout as well -- with 20-cell centered bars, right-aligned reset labels, and a final-row status lane. |
 
 The first two rows are quota windows:
 
