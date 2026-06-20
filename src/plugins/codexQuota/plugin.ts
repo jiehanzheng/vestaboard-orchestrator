@@ -57,12 +57,15 @@ export class CodexQuotaPlugin implements Plugin {
       const displayQuota = this.quotaCache.merge(freshQuota);
       const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
       this.pushStatusRows(now, thirdRowMessage, sidecarError, missingWindows);
+      const resetStatus = resetAvailableStatus(freshQuota, rateLimitResetCreditsAvailableCount);
+      if (resetStatus) {
+        this.thirdRowMessages.pushLow(resetStatus, now, TRANSIENT_THIRD_ROW_MESSAGE_TTL_MS);
+      }
       if (sidecarError) {
         logAutoStartFailure(this.options.logger, sidecarError);
       }
 
-      const statusRow = this.thirdRowMessages.top(now)
-        ?? resetAvailableStatus(freshQuota, rateLimitResetCreditsAvailableCount);
+      const statusRow = this.thirdRowMessages.top(now);
       const message = formatQuota(applyCodexQuotaDemo(displayQuota, demoMode), {
         timeZone: this.options.timeZone,
         now,

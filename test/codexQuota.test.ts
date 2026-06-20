@@ -417,6 +417,60 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   assert.equal(expired.priority, "normal");
 });
 
+test("codex plugin shows newer fetch failure above retained ping message", async () => {
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  let reads = 0;
+  let fail = false;
+  const snapshot = {
+    fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+  };
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (fail) {
+      throw new Error("Codex app-server timed out after 10000ms.");
+    }
+
+    reads += 1;
+    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt5.4minilow" } : snapshot;
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
+
+  await plugin.getUpdate();
+  now = new Date("2026-06-19T00:04:00-07:00");
+  fail = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "high");
+  assert.equal(fallback.message.text.split("\n")[2], "TIMEOUT        ");
+});
+
+test("codex plugin shows newer missing-window status above retained ping message", async () => {
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  let partial = false;
+  const plugin = new CodexQuotaPlugin(async () => {
+    if (partial) {
+      return {
+        fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
+      };
+    }
+
+    return {
+      snapshot: {
+        fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+        weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+      },
+      thirdRowMessage: "ping gpt5.4minilow"
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
+
+  await plugin.getUpdate();
+  now = new Date("2026-06-19T00:04:00-07:00");
+  partial = true;
+  const fallback = await plugin.getUpdate();
+
+  assert.equal(fallback.priority, "high");
+  assert.equal(fallback.message.text.split("\n")[2], "MISS WK        ");
+});
+
 test("app-server turn completion matching accepts events without threadId", () => {
   assert.equal(isMatchingTurnCompletion({ turn: { id: "turn-1" } }, "thread-1", "turn-1"), true);
   assert.equal(isMatchingTurnCompletion({ threadId: "thread-1", turn: { id: "turn-1" } }, "thread-1", "turn-1"), true);
@@ -535,8 +589,9 @@ test("codex plugin shows reset available when weekly quota is exhausted and rese
   assert.equal(update.message.text.split("\n")[2], "RESET AVAILABLE");
 });
 
-test("codex plugin does not retain reset available after a later fetch omits reset credits", async () => {
+test("codex plugin expires reset available after a later fetch omits reset credits", async () => {
   let reads = 0;
+  let now = new Date("2026-06-19T00:00:00-07:00");
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
     return {
@@ -546,15 +601,78 @@ test("codex plugin does not retain reset available after a later fetch omits res
       },
       rateLimitResetCreditsAvailableCount: reads === 1 ? 1 : 0
     };
-  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
 
   const first = await plugin.getUpdate();
+  const retained = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:00:01-07:00");
   const second = await plugin.getUpdate();
 
   assert.equal(first.priority, "high");
   assert.equal(first.message.text.split("\n")[2], "RESET AVAILABLE");
+  assert.equal(retained.priority, "high");
+  assert.equal(retained.message.text.split("\n")[2], "RESET AVAILABLE");
   assert.equal(second.priority, "normal");
   assert.equal(second.message.text.split("\n")[2], "0244♥06/24♥1419");
+});
+
+test("codex plugin keeps stacked refresh message above reset available until it expires", async () => {
+  let now = new Date("2026-06-19T00:00:00-07:00");
+  let reads = 0;
+  const plugin = new CodexQuotaPlugin(async () => {
+    reads += 1;
+    return {
+      snapshot: {
+        fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+        weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+      },
+      thirdRowMessage: reads === 1 ? "ping gpt5.4minilow" : undefined,
+      rateLimitResetCreditsAvailableCount: 1
+    };
+  }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
+
+  const stacked = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:04:00-07:00");
+  const retained = await plugin.getUpdate();
+  now = new Date("2026-06-19T00:06:00-07:00");
+  const resetAvailable = await plugin.getUpdate();
+
+  assert.equal(stacked.message.text.split("\n")[2], "PING GPT5.4MINI");
+  assert.equal(retained.message.text.split("\n")[2], "PING GPT5.4MINI");
+  assert.equal(resetAvailable.message.text.split("\n")[2], "RESET AVAILABLE");
+  assert.equal(stacked.priority, "high");
+  assert.equal(retained.priority, "high");
+  assert.equal(resetAvailable.priority, "high");
+});
+
+test("codex plugin keeps sidecar error above reset available in the third-row stack", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    snapshot: {
+      fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    sidecarError: new Error("model/list failed"),
+    rateLimitResetCreditsAvailableCount: 1
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "high");
+  assert.equal(update.message.text.split("\n")[2], "AUTO PING FAIL ");
+});
+
+test("codex plugin keeps missing-window status above reset available in the third-row stack", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    snapshot: {
+      weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    rateLimitResetCreditsAvailableCount: 1
+  }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "high");
+  assert.equal(update.message.text.split("\n")[2], "MISS 5H        ");
 });
 
 test("codex plugin does not show reset available when weekly quota remains", async () => {

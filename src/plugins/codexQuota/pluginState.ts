@@ -40,6 +40,10 @@ export class ThirdRowMessageStack {
     this.messages.push({ message, expiresAt: new Date(now.getTime() + ttlMs) });
   }
 
+  pushLow(message: string, now: Date, ttlMs: number): void {
+    this.messages.unshift({ message, expiresAt: new Date(now.getTime() + ttlMs) });
+  }
+
   top(now: Date): string | undefined {
     this.prune(now);
     return this.messages.at(-1)?.message;
