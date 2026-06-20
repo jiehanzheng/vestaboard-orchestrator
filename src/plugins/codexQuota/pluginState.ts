@@ -24,10 +24,12 @@ export class StatusMessageStack {
   private messages: StatusMessage[] = [];
 
   push(message: string, now: Date, ttlMs: number): void {
+    this.prune(now);
     this.messages.push({ message, expiresAt: new Date(now.getTime() + ttlMs) });
   }
 
   pushLow(message: string, now: Date, ttlMs: number): void {
+    this.prune(now);
     this.messages.unshift({ message, expiresAt: new Date(now.getTime() + ttlMs) });
   }
 

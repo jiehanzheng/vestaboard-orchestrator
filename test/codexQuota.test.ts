@@ -16,6 +16,7 @@ import {
 } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 import { BLACK, BLUE, GREEN, ORANGE, RED, VIOLET, WHITE, YELLOW } from "../src/plugins/codexQuota/display/shared.js";
+import { StatusMessageStack } from "../src/plugins/codexQuota/pluginState.js";
 import { createVestaboardBoardResolver, boardPreferenceFromEnv } from "../src/vestaboardBoard.js";
 import { createVestaboardClient, detectVestaboardBoard } from "../src/vestaboard.js";
 
@@ -123,6 +124,18 @@ test("preserves official Vestaboard color character constants", () => {
     WHITE: 69,
     BLACK: 70
   });
+});
+
+test("status message stack prunes expired messages before retaining new ones", () => {
+  const stack = new StatusMessageStack();
+  const retainedMessages = (): unknown[] => (stack as unknown as { messages: unknown[] }).messages;
+
+  stack.push("first", new Date("2026-06-19T00:00:00-07:00"), 1_000);
+  stack.push("second", new Date("2026-06-19T00:00:02-07:00"), 1_000);
+  stack.pushLow("third", new Date("2026-06-19T00:00:04-07:00"), 1_000);
+
+  assert.equal(retainedMessages().length, 1);
+  assert.equal(stack.top(new Date("2026-06-19T00:00:04-07:00")), "third");
 });
 
 test("renders full quota as 100 while preserving row width", () => {
