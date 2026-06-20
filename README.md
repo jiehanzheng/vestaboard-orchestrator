@@ -29,9 +29,9 @@ Core environment variables configure the orchestrator and Vestaboard transport. 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `ORCHESTRATOR_INTERVAL_MINUTES` | `5` | How often the orchestrator polls plugins. |
-| `VESTABOARD_TOKEN` | | Vestaboard Cloud Read/Write API token. |
+| `VESTABOARD_TOKEN` | **You MUST set either this or VESTABOARD_LOCAL_API_KEY** | Vestaboard Cloud Read/Write API token. |
 | `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
-| `VESTABOARD_LOCAL_API_KEY` | | Local API key. If set, this is preferred over the cloud API. |
+| `VESTABOARD_LOCAL_API_KEY` | **You MUST set either this or VESTABOARD_TOKEN** | Local API key. If set, this is preferred over the cloud API. |
 | `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
 | `VESTABOARD_BOARD` | `auto` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the current message layout through the configured Vestaboard API and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick. |
 
