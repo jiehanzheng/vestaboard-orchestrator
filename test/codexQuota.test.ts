@@ -1192,6 +1192,66 @@ test("vestaboard client prefers local API when local key is configured", async (
   assert.equal(requests[0]?.init.body, "[[1,2,3]]");
 });
 
+test("vestaboard client detects Flagship through local API when local key is configured", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    localApiKey: "local-key",
+    cloudUrl: "https://cloud.example/",
+    localUrl: "http://local.example/message",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      if (init?.method === "GET") {
+        return Response.json(Array.from({ length: 6 }, () => Array(22).fill(0)));
+      }
+
+      return new Response("", { status: 200 });
+    }
+  });
+
+  const board = await client.detectBoard?.();
+  await client.send({ text: "ok", characters: [[1, 2, 3]] });
+
+  assert.equal(board, "flagship");
+  assert.equal(requests[0]?.url, "http://local.example/message");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+  assert.equal(requests[1]?.url, "http://local.example/message");
+  assert.equal((requests[1]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+  assert.equal(requests[1]?.init.body, "[[1,2,3]]");
+});
+
+test("vestaboard client detects Note through local API without cloud token", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return Response.json(Array.from({ length: 3 }, () => Array(15).fill(0)));
+    }
+  });
+
+  assert.equal(await client.detectBoard?.(), "note");
+  assert.equal(requests[0]?.url, "http://local.example/message");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+});
+
+test("vestaboard client uses local detection in dry-run local mode", async () => {
+  const client = createVestaboardClient({
+    dryRun: true,
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async () => Response.json(Array.from({ length: 6 }, () => Array(22).fill(0))),
+    logger: { info() {} }
+  });
+
+  assert.equal(await client.detectBoard?.(), "flagship");
+});
+
 test("vestaboard client falls back to cloud API when local key is absent", async () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const client = createVestaboardClient({
@@ -1209,6 +1269,24 @@ test("vestaboard client falls back to cloud API when local key is absent", async
   assert.equal(requests[0]?.url, "https://cloud.example/");
   assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
   assert.equal(requests[0]?.init.body, "{\"text\":\"ok\"}");
+});
+
+test("vestaboard client detects board through cloud API when local key is absent", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return Response.json({ currentMessage: { layout: Array.from({ length: 6 }, () => Array(22).fill(0)) } });
+    }
+  });
+
+  assert.equal(await client.detectBoard?.(), "flagship");
+  assert.equal(requests[0]?.url, "https://cloud.example/");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
 });
 
 test("error message is encodable for Vestaboard Note", () => {

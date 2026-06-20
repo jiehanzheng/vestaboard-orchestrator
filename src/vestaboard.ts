@@ -18,9 +18,15 @@ export function createVestaboardClient({
   fetchImpl?: typeof fetch;
   logger?: Pick<Console, "info">;
 }): VestaboardClient {
+  const detectBoard = localApiKey
+    ? () => detectLocalVestaboardBoard({ localApiKey, localUrl, fetchImpl })
+    : token
+      ? () => detectVestaboardBoard({ token, cloudUrl, fetchImpl })
+      : undefined;
+
   if (dryRun) {
     return {
-      detectBoard: token ? () => detectVestaboardBoard({ token, cloudUrl, fetchImpl }) : undefined,
+      detectBoard,
       async send(message) {
         logger.info("Dry-run Vestaboard message:");
         logger.info(message.text);
@@ -34,6 +40,7 @@ export function createVestaboardClient({
 
   if (localApiKey) {
     return {
+      detectBoard,
       send(message) {
         if (!message.characters) {
           throw new Error("Local Vestaboard mode requires character-code messages.");
@@ -52,7 +59,7 @@ export function createVestaboardClient({
   }
 
   return {
-    detectBoard: () => detectVestaboardBoard({ token, cloudUrl, fetchImpl }),
+    detectBoard,
     send: (message) =>
       post(fetchImpl, cloudUrl, {
         headers: { "X-Vestaboard-Token": token },
@@ -83,7 +90,35 @@ export async function detectVestaboardBoard({
   }
 
   const body = await response.json() as { currentMessage?: { layout?: unknown } };
-  const dimensions = layoutDimensions(body.currentMessage?.layout);
+  return boardFromLayout(body.currentMessage?.layout);
+}
+
+export async function detectLocalVestaboardBoard({
+  localApiKey,
+  localUrl = "http://vestaboard.local:7000/local-api/message",
+  fetchImpl = fetch
+}: {
+  localApiKey: string;
+  localUrl?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<VestaboardBoard | undefined> {
+  const response = await fetchImpl(localUrl, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Vestaboard-Local-Api-Key": localApiKey
+    }
+  });
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  return boardFromLayout(await response.json());
+}
+
+function boardFromLayout(layout: unknown): VestaboardBoard | undefined {
+  const dimensions = layoutDimensions(layout);
   if (!dimensions) {
     return undefined;
   }
