@@ -137,5 +137,4 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
   await client.waitForTurnCompletion(thread.thread.id, turn.turn.id);
 }
 
-export { QuotaWindowHistory as AutoStartPingState };
 export type { AutoStartPingPlan, AutoStartQuotaConfig, AutoStartWindowCandidate };

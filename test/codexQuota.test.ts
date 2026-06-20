@@ -6,7 +6,6 @@ import { isMatchingTurnCompletion, turnCompletionFailure } from "../src/plugins/
 import { CodexAutoStartSidecar } from "../src/plugins/codexQuota/autoStartSidecar.js";
 import { applyCodexQuotaDemo } from "../src/plugins/codexQuota/demo.js";
 import {
-  AutoStartPingState,
   CodexQuotaPlugin,
   formatError,
   formatQuota,
@@ -576,41 +575,41 @@ test("auto-start model selection falls back to mini and then the last filtered m
 });
 
 test("auto-start planner selects enabled unused windows and skips disabled or used windows", () => {
-  const state = new AutoStartPingState();
+  const state = new QuotaWindowHistory();
   const now = new Date("2026-06-19T00:00:00-07:00");
 
-  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: false, weekly: false }, { force: false, now }), {
+  assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: false, weekly: false }, { force: false, now }), {
     type: "skip",
     reason: "no-eligible-window"
   });
-  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: true, weekly: false }, { force: false, now }), {
+  assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.99 }), { fiveHour: true, weekly: false }, { force: false, now }), {
     type: "ping",
     trigger: "unused-quota",
     windows: [{ id: "fiveHour", row: "5H", resetAtMs: new Date("2026-06-19T09:44:00.000Z").getTime() }]
   });
-  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 0.99, weekly: 1 }), { fiveHour: true, weekly: false }, { force: false, now }), {
+  assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 0.99, weekly: 1 }), { fiveHour: true, weekly: false }, { force: false, now }), {
     type: "skip",
     reason: "no-eligible-window"
   });
 });
 
 test("auto-start planner records successful windows and allows a newer reset timestamp", () => {
-  const state = new AutoStartPingState();
+  const state = new QuotaWindowHistory();
   const firstNow = new Date("2026-06-19T00:00:00-07:00");
-  const first = state.plan(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: firstNow });
+  const first = state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: firstNow });
   assert.equal(first.type, "ping");
   assert.equal(first.type === "ping" ? first.windows.length : 0, 2);
 
   if (first.type === "ping") {
-    state.recordSuccess(first, firstNow);
+    state.recordPingSuccess(first, firstNow);
   }
 
-  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }), {
+  assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 1 }), { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }), {
     type: "skip",
     reason: "no-eligible-window"
   });
 
-  const newer = state.plan({
+  const newer = state.planAutoStart({
     fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 },
     weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
   }, { fiveHour: true, weekly: true }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") });
@@ -623,44 +622,44 @@ test("auto-start planner records successful windows and allows a newer reset tim
 });
 
 test("auto-start planner applies cooldown only after successful pings", () => {
-  const state = new AutoStartPingState();
+  const state = new QuotaWindowHistory();
   const snapshot = quotaSnapshot({ fiveHour: 1, weekly: 0.5 });
   const now = new Date("2026-06-19T00:00:00-07:00");
-  const first = state.plan(snapshot, { fiveHour: true, weekly: false }, { force: false, now });
+  const first = state.planAutoStart(snapshot, { fiveHour: true, weekly: false }, { force: false, now });
   assert.equal(first.type, "ping");
-  assert.equal(state.plan(snapshot, { fiveHour: true, weekly: false }, { force: false, now }).type, "ping");
+  assert.equal(state.planAutoStart(snapshot, { fiveHour: true, weekly: false }, { force: false, now }).type, "ping");
 
   if (first.type === "ping") {
-    state.recordSuccess(first, now);
+    state.recordPingSuccess(first, now);
   }
 
-  assert.deepEqual(state.plan({
+  assert.deepEqual(state.planAutoStart({
     fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 }
   }, { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:29:59-07:00") }), {
     type: "skip",
     reason: "cooldown"
   });
-  assert.equal(state.plan({
+  assert.equal(state.planAutoStart({
     fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T07:44:00-07:00"), durationMins: 300 }
   }, { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:30:00-07:00") }).type, "ping");
 });
 
 test("auto-start planner force mode bypasses flags quota records and cooldown without marking windows", () => {
-  const state = new AutoStartPingState();
+  const state = new QuotaWindowHistory();
   const firstNow = new Date("2026-06-19T00:00:00-07:00");
-  const normal = state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: firstNow });
+  const normal = state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: firstNow });
   assert.equal(normal.type, "ping");
   if (normal.type === "ping") {
-    state.recordSuccess(normal, firstNow);
+    state.recordPingSuccess(normal, firstNow);
   }
 
-  const force = state.plan(quotaSnapshot({ fiveHour: 0.8, weekly: 0.4 }), { fiveHour: false, weekly: false }, { force: true, now: new Date("2026-06-19T00:01:00-07:00") });
+  const force = state.planAutoStart(quotaSnapshot({ fiveHour: 0.8, weekly: 0.4 }), { fiveHour: false, weekly: false }, { force: true, now: new Date("2026-06-19T00:01:00-07:00") });
   assert.deepEqual(force, { type: "ping", trigger: "force", windows: [] });
   if (force.type === "ping") {
-    state.recordSuccess(force, new Date("2026-06-19T00:01:00-07:00"));
+    state.recordPingSuccess(force, new Date("2026-06-19T00:01:00-07:00"));
   }
 
-  assert.deepEqual(state.plan(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
+  assert.deepEqual(state.planAutoStart(quotaSnapshot({ fiveHour: 1, weekly: 0.5 }), { fiveHour: true, weekly: false }, { force: false, now: new Date("2026-06-19T00:31:00-07:00") }), {
     type: "skip",
     reason: "no-eligible-window"
   });

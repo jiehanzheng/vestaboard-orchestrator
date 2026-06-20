@@ -62,10 +62,6 @@ export class QuotaWindowHistory {
       : { type: "skip", reason: "no-eligible-window" };
   }
 
-  plan(snapshot: QuotaSnapshot, config: AutoStartQuotaConfig, options: { force: boolean; now: Date }): AutoStartPingPlan {
-    return this.planAutoStart(snapshot, config, options);
-  }
-
   recordPingSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
     this.lastSuccessfulPingAtMs = now.getTime();
     if (plan.trigger === "force") {
@@ -75,10 +71,6 @@ export class QuotaWindowHistory {
     for (const window of plan.windows) {
       this.windows[window.id].pingedResetAtMs = window.resetAtMs;
     }
-  }
-
-  recordSuccess(plan: Extract<AutoStartPingPlan, { type: "ping" }>, now: Date): void {
-    this.recordPingSuccess(plan, now);
   }
 
   private recordFreshWindow(id: QuotaWindowId, window: QuotaWindow | undefined): void {
