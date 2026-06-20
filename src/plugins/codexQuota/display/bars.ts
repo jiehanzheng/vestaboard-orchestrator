@@ -1,31 +1,52 @@
 import type { QuotaWindow } from "../types.js";
-import { BLANK, BLUE, charCode, clamp, GREEN, RED } from "./shared.js";
+import { BLANK, BLUE, charCode, clamp, GREEN, ORANGE, RED, WHITE, YELLOW } from "./shared.js";
 
 export function quotaBar(window: QuotaWindow, now: Date, width: number, stale = false, showPacing = true): number[] {
   const quotaBlocks = Math.round(clamp(window.remainingRatio) * width);
-  const timeBlocks = showPacing ? Math.round(timeRemainingRatio(window, now) * width) : quotaBlocks;
-  const greenBlocks = showPacing ? Math.min(quotaBlocks, timeBlocks) : quotaBlocks;
-  const redBlocks = showPacing ? Math.max(0, timeBlocks - quotaBlocks) : 0;
-  const blueBlocks = showPacing ? Math.max(0, quotaBlocks - timeBlocks) : 0;
-  const availableBlankBlocks = width - greenBlocks - redBlocks - blueBlocks;
-  const staleBlocks = showPacing && stale && availableBlankBlocks > 0 ? 1 : 0;
-  const blankBlocks = availableBlankBlocks - staleBlocks;
-
-  return [
-    ...Array(greenBlocks).fill(GREEN),
-    ...Array(redBlocks).fill(RED),
-    ...Array(blueBlocks).fill(BLUE),
-    ...Array(staleBlocks).fill(charCode("?")),
-    ...Array(blankBlocks).fill(BLANK)
+  const fill = showPacing ? pacingColor(window, now) : GREEN;
+  const bar = [
+    ...Array(quotaBlocks).fill(fill),
+    ...Array(width - quotaBlocks).fill(BLANK)
   ];
+
+  if (showPacing) {
+    const markerIndex = timeMarkerIndex(window, now, width);
+    bar[markerIndex] = WHITE;
+    const staleIndex = bar.findIndex((code) => code === BLANK);
+    if (stale && staleIndex >= 0) {
+      bar[staleIndex] = charCode("?");
+    }
+  }
+
+  return bar;
 }
 
 export function barTextChar(code: number): string {
   if (code === GREEN) return "G";
+  if (code === YELLOW) return "Y";
+  if (code === ORANGE) return "O";
   if (code === RED) return "R";
   if (code === BLUE) return "B";
+  if (code === WHITE) return "W";
   if (code === charCode("?")) return "?";
   return " ";
+}
+
+function pacingColor(window: QuotaWindow, now: Date): number {
+  const timeRatio = timeRemainingRatio(window, now);
+  if (timeRatio <= 0) {
+    return GREEN;
+  }
+
+  const paceRatio = clamp(window.remainingRatio) / timeRatio;
+  if (paceRatio >= 1) return GREEN;
+  if (paceRatio >= 0.85) return YELLOW;
+  if (paceRatio >= 0.65) return ORANGE;
+  return RED;
+}
+
+function timeMarkerIndex(window: QuotaWindow, now: Date, width: number): number {
+  return Math.min(width - 1, Math.max(0, Math.round(timeRemainingRatio(window, now) * width)));
 }
 
 function timeRemainingRatio(window: QuotaWindow, now: Date): number {
