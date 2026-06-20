@@ -13,7 +13,7 @@ The crop helper uses Pillow. Install it in a project-local temporary venv before
 
 ```sh
 python3 -m venv temp_nocommit/vestaboard-safari-screenshots-venv
-temp_nocommit/vestaboard-safari-screenshots-venv/bin/python -m pip install -r .codex/skills/vestaboard-safari-screenshots/requirements.txt
+temp_nocommit/vestaboard-safari-screenshots-venv/bin/python -m pip install -r .agents/skills/vestaboard-safari-screenshots/requirements.txt
 ```
 
 Run `scripts/crop_vestaboard_board.py` with that venv's Python, or activate the venv first.
@@ -26,8 +26,9 @@ Run `scripts/crop_vestaboard_board.py` with that venv's Python, or activate the 
 2. Send the desired message through the Vestaboard API or project code path that the screenshot is meant to document.
    - Do not embed API tokens in scripts or committed files.
    - Prefer the repo formatter/client over hand-written payloads.
-   - For the README Codex quota Note examples, run `pnpm build` first, then use `scripts/send_codex_quota_note_state.mjs pacing-on|pacing-off|ping` with `VESTABOARD_TOKEN` set.
-   - For the README Codex quota Flagship example, run `pnpm build` first, then use `scripts/send_codex_quota_flagship_state.mjs` with `VESTABOARD_TOKEN` set.
+   - For README Codex quota examples, run `pnpm build` first, then use `scripts/send_codex_quota_state.mjs` with `VESTABOARD_TOKEN` set.
+   - Note states: `--board note --state pacing-on|pacing-off|ping`.
+   - Flagship state: `--board flagship --state standard`.
 3. Open the board-specific History page in Safari.
 4. Click the lower-left duplicate/copy button for the target History card to open the larger compose/visual view.
 5. Capture the Safari window with `screencapture`.
@@ -44,11 +45,31 @@ Run `scripts/crop_vestaboard_board.py` with that venv's Python, or activate the 
 
 Use the captured Safari duplicate/compose-view PNG as `CAPTURE`.
 
+Send Note:
+
+```sh
+VESTABOARD_TOKEN="$API_KEY" \
+  node .agents/skills/vestaboard-safari-screenshots/scripts/send_codex_quota_state.mjs \
+  --board note --state pacing-on
+```
+
+Preview without sending by appending `--dry-run`.
+
+Send Flagship:
+
+```sh
+VESTABOARD_TOKEN="$API_KEY" \
+  node .agents/skills/vestaboard-safari-screenshots/scripts/send_codex_quota_state.mjs \
+  --board flagship --state standard
+```
+
+Preview without sending by appending `--dry-run`.
+
 Note:
 
 ```sh
 temp_nocommit/vestaboard-safari-screenshots-venv/bin/python \
-  .codex/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
+  .agents/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
   "$CAPTURE" docs/images/codex-pacing-on.png \
   --rough X0,Y0,X1,Y1 --rows 3 --cols 15 \
   --expect-width 1720 --expect-height 605
@@ -58,7 +79,7 @@ Flagship:
 
 ```sh
 temp_nocommit/vestaboard-safari-screenshots-venv/bin/python \
-  .codex/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
+  .agents/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
   "$CAPTURE" docs/images/codex-flagship.png \
   --rough X0,Y0,X1,Y1 --rows 6 --cols 22 \
   --pad-x 23 --pad-y 22 --expect-width 1766 --expect-height 962
