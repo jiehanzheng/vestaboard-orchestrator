@@ -1,4 +1,7 @@
-export type Priority = "none" | "low" | "normal" | "high" | "urgent" | string | number;
+import { priorityValue, type Priority } from "./priority.js";
+import type { VestaboardBoard } from "./vestaboardTypes.js";
+
+export type { Priority } from "./priority.js";
 
 export interface VestaboardMessage {
   text: string;
@@ -17,7 +20,7 @@ export interface PluginUpdate {
 
 export interface VestaboardClient {
   send(message: VestaboardMessage): Promise<void>;
-  detectBoard?(): Promise<"note" | "flagship" | undefined>;
+  detectBoard?(): Promise<VestaboardBoard | undefined>;
 }
 
 export class LastSentMessageCache {
@@ -31,14 +34,6 @@ export class LastSentMessageCache {
     this.lastMessageKey = messageKey(message);
   }
 }
-
-const PRIORITIES: Record<string, number> = {
-  none: 0,
-  low: 10,
-  normal: 50,
-  high: 80,
-  urgent: 100
-};
 
 export async function tick({
   plugins,
@@ -55,7 +50,7 @@ export async function tick({
     plugins.map(async (plugin) => {
       try {
         const update = await plugin.getUpdate();
-        return { plugin, update, priority: toPriorityNumber(update.priority) };
+        return { plugin, update, priority: priorityValue(update.priority) };
       } catch (error) {
         logger.warn(`Plugin ${plugin.id} update failed.`, error);
         return null;
@@ -114,19 +109,4 @@ export async function runForever({
       await sleep(waitMs);
     }
   }
-}
-
-function toPriorityNumber(priority: Priority): number {
-  if (typeof priority === "number" && Number.isFinite(priority)) {
-    return priority;
-  }
-
-  const normalized = String(priority).trim().toLowerCase();
-  const namedPriority = PRIORITIES[normalized];
-  if (namedPriority !== undefined) {
-    return namedPriority;
-  }
-
-  const numericPriority = Number(normalized);
-  return Number.isFinite(numericPriority) ? numericPriority : 0;
 }

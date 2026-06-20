@@ -1,4 +1,5 @@
 import type { Plugin, PluginUpdate, Priority } from "../../orchestrator.js";
+import type { VestaboardBoard, VestaboardBoardProvider } from "../../vestaboardTypes.js";
 import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
 import { formatError, formatQuota } from "./display/index.js";
 import {
@@ -19,7 +20,7 @@ import {
 } from "./pluginState.js";
 import { QuotaWindowHistory } from "./quotaWindowHistory.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
-import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot, VestaboardBoard } from "./types.js";
+import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot } from "./types.js";
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
@@ -34,7 +35,7 @@ export class CodexQuotaPlugin implements Plugin {
       errorPriority: Priority;
       timeZone?: string;
       showPacing?: boolean;
-      board?: VestaboardBoard | (() => Promise<VestaboardBoard> | VestaboardBoard);
+      board?: VestaboardBoardProvider;
       statusMessage?: () => string | undefined;
       takeDemoMode?: () => CodexQuotaDemoState | undefined;
       restoreDemoMode?: (demo: CodexQuotaDemoState) => void;

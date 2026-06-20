@@ -1,28 +1,7 @@
-import { withCodexAppServer } from "./appServer.js";
+import { withCodexAppServer, type RateLimitBucket, type RateLimitsResult, type RateWindow } from "./appServer.js";
 import { CodexAutoStartSidecar, type AutoStartQuotaConfig } from "./autoStartSidecar.js";
 import { QuotaWindowHistory } from "./quotaWindowHistory.js";
 import type { QuotaPollOptions, QuotaPoller, QuotaPollResult, QuotaSnapshot, QuotaWindow } from "./types.js";
-
-interface RateWindow {
-  usedPercent: number;
-  windowDurationMins: number;
-  resetsAt: number;
-}
-
-interface RateLimitBucket {
-  limitId: string;
-  limitName?: string | null;
-  primary?: RateWindow | null;
-  secondary?: RateWindow | null;
-}
-
-export interface RateLimitsResult {
-  rateLimits?: RateLimitBucket | null;
-  rateLimitsByLimitId?: Record<string, RateLimitBucket> | null;
-  rateLimitResetCredits?: {
-    availableCount?: number | null;
-  } | null;
-}
 
 const FIVE_HOUR_MINS = 300;
 const WEEKLY_MINS = 10_080;
@@ -34,13 +13,13 @@ export function createCodexQuotaPoller(autoStartConfig: AutoStartQuotaConfig, hi
 
 export async function readCodexQuota(): Promise<QuotaSnapshot> {
   return withCodexAppServer(async (client) => {
-    const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
+    const rateLimits = await client.readRateLimits();
     return quotaFromRateLimits(rateLimits);
   });
 }
 
 export async function readRateLimits(): Promise<RateLimitsResult> {
-  return withCodexAppServer((client) => client.request<RateLimitsResult>("account/rateLimits/read"));
+  return withCodexAppServer((client) => client.readRateLimits());
 }
 
 export function quotaFromRateLimits(result: RateLimitsResult): QuotaSnapshot {
@@ -73,7 +52,7 @@ async function readCodexQuotaWithSidecar(
   options: QuotaPollOptions
 ): Promise<QuotaPollResult> {
   return withCodexAppServer(async (client) => {
-    const rateLimits = await client.request<RateLimitsResult>("account/rateLimits/read");
+    const rateLimits = await client.readRateLimits();
     const snapshot = quotaFromRateLimits(rateLimits);
     const rateLimitResetCreditsAvailableCount = resetCreditsAvailableCount(rateLimits);
     try {

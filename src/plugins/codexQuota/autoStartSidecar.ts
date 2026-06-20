@@ -1,4 +1,4 @@
-import type { CodexAppServerClient } from "./appServer.js";
+import type { CodexAppServerClient, CodexModel } from "./appServer.js";
 import {
   QuotaWindowHistory,
   type AutoStartPingPlan,
@@ -6,34 +6,6 @@ import {
   type AutoStartWindowCandidate
 } from "./quotaWindowHistory.js";
 import type { QuotaSnapshot } from "./types.js";
-
-interface ModelListResult {
-  data: CodexModel[];
-  nextCursor?: string | null;
-}
-
-interface CodexModel {
-  id: string;
-  model: string;
-  supportedReasoningEfforts: ReasoningEffortOption[];
-}
-
-interface ReasoningEffortOption {
-  reasoningEffort: string;
-}
-
-interface ThreadStartResult {
-  thread: {
-    id: string;
-  };
-}
-
-interface TurnStartResult {
-  turn: {
-    id: string;
-    status: string;
-  };
-}
 
 const AUTO_START_BASE_INSTRUCTIONS = "Obey exactly.";
 const AUTO_START_PROMPT = "Reply exactly: ok. Do not inspect files or run commands.";
@@ -98,7 +70,7 @@ async function readAllModels(client: CodexAppServerClient): Promise<CodexModel[]
   let cursor: string | null | undefined;
 
   do {
-    const page = await client.request<ModelListResult>("model/list", { limit: 100, includeHidden: false, cursor });
+    const page = await client.readModels({ limit: 100, includeHidden: false, cursor });
     models.push(...page.data);
     cursor = page.nextCursor;
   } while (cursor);
@@ -111,7 +83,7 @@ function findModelWithSuffix(models: CodexModel[], suffix: string): CodexModel |
 }
 
 async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { model: string; reasoningEffort: string }): Promise<void> {
-  const thread = await client.request<ThreadStartResult>("thread/start", {
+  const thread = await client.startThread({
     model: selection.model,
     approvalPolicy: "never",
     sandbox: "read-only",
@@ -119,7 +91,7 @@ async function sendAutoStartPrompt(client: CodexAppServerClient, selection: { mo
     ephemeral: true,
     threadSource: "user"
   });
-  const turn = await client.request<TurnStartResult>("turn/start", {
+  const turn = await client.startTurn({
     threadId: thread.thread.id,
     input: [{ type: "text", text: AUTO_START_PROMPT, text_elements: [] }],
     model: selection.model,

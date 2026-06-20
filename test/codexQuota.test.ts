@@ -870,24 +870,24 @@ test("app-server turn completion only treats completed as success", () => {
 });
 
 test("auto-start sidecar starts read-only threads without cwd", async () => {
-  let threadStartParams: Record<string, unknown> | undefined;
+  let threadStartParams: { sandbox?: string; cwd?: unknown } | undefined;
   const sidecar = new CodexAutoStartSidecar({ fiveHour: false, weekly: false });
   const client = {
-    async request<T>(method: string, params?: Record<string, unknown>): Promise<T> {
-      if (method === "model/list") {
-        return {
-          data: [model("gpt-5.4-mini", ["low"])],
-          nextCursor: null
-        } as T;
-      }
-      if (method === "thread/start") {
-        threadStartParams = params;
-        return { thread: { id: "thread-1" } } as T;
-      }
-      if (method === "turn/start") {
-        return { turn: { id: "turn-1", status: "completed" } } as T;
-      }
-      throw new Error(`unexpected method ${method}`);
+    async readRateLimits() {
+      throw new Error("unexpected readRateLimits");
+    },
+    async readModels() {
+      return {
+        data: [model("gpt-5.4-mini", ["low"])],
+        nextCursor: null
+      };
+    },
+    async startThread(params: { sandbox?: string; cwd?: unknown }) {
+      threadStartParams = params;
+      return { thread: { id: "thread-1" } };
+    },
+    async startTurn() {
+      return { turn: { id: "turn-1", status: "completed" } };
     },
     async waitForTurnCompletion() {}
   };
@@ -907,20 +907,20 @@ test("auto-start sidecar starts read-only threads without cwd", async () => {
 test("auto-start sidecar rejects non-progress turn start statuses", async () => {
   const sidecar = new CodexAutoStartSidecar({ fiveHour: false, weekly: false });
   const client = {
-    async request<T>(method: string): Promise<T> {
-      if (method === "model/list") {
-        return {
-          data: [model("gpt-5.4-mini", ["low"])],
-          nextCursor: null
-        } as T;
-      }
-      if (method === "thread/start") {
-        return { thread: { id: "thread-1" } } as T;
-      }
-      if (method === "turn/start") {
-        return { turn: { id: "turn-1", status: "interrupted" } } as T;
-      }
-      throw new Error(`unexpected method ${method}`);
+    async readRateLimits() {
+      throw new Error("unexpected readRateLimits");
+    },
+    async readModels() {
+      return {
+        data: [model("gpt-5.4-mini", ["low"])],
+        nextCursor: null
+      };
+    },
+    async startThread() {
+      return { thread: { id: "thread-1" } };
+    },
+    async startTurn() {
+      return { turn: { id: "turn-1", status: "interrupted" } };
     },
     async waitForTurnCompletion() {}
   };
