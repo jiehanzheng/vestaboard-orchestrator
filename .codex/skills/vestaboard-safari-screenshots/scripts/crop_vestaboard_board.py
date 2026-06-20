@@ -124,11 +124,25 @@ def main() -> None:
     parser.add_argument("--rough", required=True, type=parse_rect, help="Loose board rectangle as x0,y0,x1,y1 in screenshot pixels")
     parser.add_argument("--rows", required=True, type=int)
     parser.add_argument("--cols", required=True, type=int)
+    parser.add_argument("--pad-x", type=int, default=0, help="Pixels to retain left and right outside detected board bounds")
+    parser.add_argument("--pad-y", type=int, default=0, help="Pixels to retain above and below detected board bounds")
+    parser.add_argument("--expect-width", type=int, help="Fail unless the output width matches this value")
+    parser.add_argument("--expect-height", type=int, help="Fail unless the output height matches this value")
     args = parser.parse_args()
 
     image = Image.open(args.input).convert("RGB")
-    crop = detect_board(image, args.rough, args.rows, args.cols)
+    bx0, by0, bx1, by1 = detect_board(image, args.rough, args.rows, args.cols)
+    crop = (
+        max(0, bx0 - args.pad_x),
+        max(0, by0 - args.pad_y),
+        min(image.width, bx1 + args.pad_x),
+        min(image.height, by1 + args.pad_y),
+    )
     output = image.crop(crop)
+    if args.expect_width is not None and output.width != args.expect_width:
+        raise SystemExit(f"Expected width {args.expect_width}; got {output.width} from crop={crop}")
+    if args.expect_height is not None and output.height != args.expect_height:
+        raise SystemExit(f"Expected height {args.expect_height}; got {output.height} from crop={crop}")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     output.save(args.output)
     print(f"crop={crop} size={output.size} grid={args.cols}x{args.rows} output={args.output}")

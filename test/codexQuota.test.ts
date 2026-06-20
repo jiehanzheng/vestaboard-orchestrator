@@ -267,19 +267,19 @@ test("renders Flagship quota as six 22-column rows with centered 20-column bars"
   assert.equal(rows.every((row) => row.length === 22), true);
   assert.equal(message.characters?.length, 6);
   assert.equal(message.characters?.every((row) => row.length === 22), true);
-  assert.equal(rows[0], "CODEX USAGE      RESET");
-  assert.equal(rows[1], "5H     77%       20:25");
+  assert.equal(rows[0], "CODEX REMAINING  RESET");
+  assert.equal(rows[1], "5H    77%        20:25");
   assert.equal(rows[2][0], " ");
   assert.equal(rows[2].slice(1, 21), "GGGGGGGGGGGGGGG     ");
   assert.equal(rows[2][21], " ");
-  assert.equal(rows[3], "WEEK    6% 06/24 14:19");
+  assert.equal(rows[3], "WEEK  6%   06/24 14:19");
   assert.equal(rows[4][0], " ");
   assert.equal(rows[4].slice(1, 21), "G                   ");
   assert.equal(rows[4][21], " ");
   assert.equal(rows[5], "                      ");
-  assert.equal(rows[0].indexOf("USAGE"), 6);
-  assert.equal(rows[1].slice(6, 10), " 77%");
-  assert.equal(rows[3].slice(6, 10), "  6%");
+  assert.equal(rows[0].indexOf("REMAINING"), 6);
+  assert.equal(rows[1].slice(6, 9), "77%");
+  assert.equal(rows[3].slice(6, 8), "6%");
   assert.equal(rows[0].slice(-5), "RESET");
   assert.equal(rows[1].slice(-5), "20:25");
   assert.equal(rows[3].slice(-11), "06/24 14:19");
@@ -302,7 +302,7 @@ test("renders Flagship status override in the last row and truncates overflow", 
   assert.equal(message.text.split("\n")[5], "TIMEOUT USING CACHED W");
 });
 
-test("renders Flagship full quota as 100% in the aligned usage field", () => {
+test("renders Flagship full quota as 100% in the aligned remaining field", () => {
   const message = formatQuota(
     {
       fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T20:25:00-07:00"), durationMins: 300 },

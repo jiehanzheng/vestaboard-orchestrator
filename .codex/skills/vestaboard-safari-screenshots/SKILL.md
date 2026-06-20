@@ -20,19 +20,51 @@ Run `scripts/crop_vestaboard_board.py` with that venv's Python, or activate the 
 
 ## Workflow
 
-1. Send the desired message through the Vestaboard API or project code path that the screenshot is meant to document.
+1. Confirm inputs before touching the board.
+   - Ask for the board-specific API key unless it has already been provided for this board type in the current task.
+   - Ask for the board-specific Vestaboard web URL, such as `https://web.vestaboard.com/board/<board-id>/messages`; do not reuse a URL from another board.
+2. Send the desired message through the Vestaboard API or project code path that the screenshot is meant to document.
    - Do not embed API tokens in scripts or committed files.
    - Prefer the repo formatter/client over hand-written payloads.
    - For the README Codex quota Note examples, run `pnpm build` first, then use `scripts/send_codex_quota_note_state.mjs pacing-on|pacing-off|ping` with `VESTABOARD_TOKEN` set.
-2. Open the board History page in Safari.
-3. Click the lower-left duplicate/copy button for the target History card to open the larger compose/visual view.
-4. Capture the Safari window with `screencapture`.
-5. Crop with `scripts/crop_vestaboard_board.py`.
+   - For the README Codex quota Flagship example, run `pnpm build` first, then use `scripts/send_codex_quota_flagship_state.mjs` with `VESTABOARD_TOKEN` set.
+3. Open the board-specific History page in Safari.
+4. Click the lower-left duplicate/copy button for the target History card to open the larger compose/visual view.
+5. Capture the Safari window with `screencapture`.
+6. Crop with `scripts/crop_vestaboard_board.py`.
    - Provide a rough rectangle around only the board area in screenshot pixels; this can be loose and should not depend on Safari window position.
    - The script finds the exact board border from the rough region using board-pixel projections around the rendered message content.
    - The script validates the expected grid shape before writing output.
    - Use `--rows 3 --cols 15` for Note and `--rows 6 --cols 22` for Flagship.
-6. Verify output dimensions and visually inspect the crop before replacing docs assets.
+   - For Note README assets, use no frame padding and expect `1720x605`.
+   - For Flagship README assets, use `--pad-x 23 --pad-y 22 --expect-width 1766 --expect-height 962`; this retains the thick physical frame and bottom Vestaboard mark.
+7. Verify output dimensions and visually inspect the crop before replacing docs assets.
+
+## README Crop Commands
+
+Use the captured Safari duplicate/compose-view PNG as `CAPTURE`.
+
+Note:
+
+```sh
+temp_nocommit/vestaboard-safari-screenshots-venv/bin/python \
+  .codex/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
+  "$CAPTURE" docs/images/codex-pacing-on.png \
+  --rough X0,Y0,X1,Y1 --rows 3 --cols 15 \
+  --expect-width 1720 --expect-height 605
+```
+
+Flagship:
+
+```sh
+temp_nocommit/vestaboard-safari-screenshots-venv/bin/python \
+  .codex/skills/vestaboard-safari-screenshots/scripts/crop_vestaboard_board.py \
+  "$CAPTURE" docs/images/codex-flagship.png \
+  --rough X0,Y0,X1,Y1 --rows 6 --cols 22 \
+  --pad-x 23 --pad-y 22 --expect-width 1766 --expect-height 962
+```
+
+For `--rough`, use screenshot pixel coordinates around the board/frame area only. It is intentionally capture-specific and should be loose enough to contain the whole board, but not the compose controls.
 
 ## Pixel Precision
 
@@ -44,6 +76,7 @@ The crop is acceptable only when:
 - the detected rectangle contains the expected row/column grid,
 - no browser chrome, compose controls, or page background remains,
 - no board edge, tile shadow, or rendered character is clipped.
+- for Flagship, the thick physical frame is retained; a tile-grid-only crop is not acceptable.
 
 ## Safari Notes
 
