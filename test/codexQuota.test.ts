@@ -14,7 +14,8 @@ import {
   selectAutoStartModel
 } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
-import { createVestaboardClient } from "../src/vestaboard.js";
+import { createVestaboardBoardResolver, boardPreferenceFromEnv } from "../src/vestaboardBoard.js";
+import { createVestaboardClient, detectVestaboardBoard } from "../src/vestaboard.js";
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
   const snapshot = quotaFromRateLimits({
@@ -85,7 +86,7 @@ test("renders documented Vestaboard punctuation character codes", () => {
     },
     {
       now: new Date("2026-06-18T21:44:00-07:00"),
-      statusRow: "!@#$()-+&=;:'\""
+      statusMessage: "!@#$()-+&=;:'\""
     }
   );
 
@@ -101,7 +102,7 @@ test("renders documented comma period degree and heart character codes", () => {
     },
     {
       now: new Date("2026-06-18T21:44:00-07:00"),
-      statusRow: "punct,./?°♥"
+      statusMessage: "punct,./?°♥"
     }
   );
 
@@ -237,6 +238,103 @@ test("renders only green quota blocks when pacing is hidden", () => {
   assert.equal(message.text.includes("?"), false);
   assert.equal(message.characters?.flat().includes(63), false);
   assert.equal(message.characters?.flat().includes(67), false);
+});
+
+test("renders Flagship quota as six 22-column rows with centered 20-column bars", () => {
+  const message = formatQuota(
+    {
+      fiveHour: {
+        remainingRatio: 0.77,
+        resetAt: new Date("2026-06-19T20:25:00-07:00"),
+        durationMins: 300
+      },
+      weekly: {
+        remainingRatio: 0.06,
+        resetAt: new Date("2026-06-24T14:19:00-07:00"),
+        durationMins: 10_080
+      }
+    },
+    {
+      board: "flagship",
+      timeZone: "America/Los_Angeles",
+      now: new Date("2026-06-19T00:00:00-07:00"),
+      showPacing: false
+    }
+  );
+  const rows = message.text.split("\n");
+
+  assert.equal(rows.length, 6);
+  assert.equal(rows.every((row) => row.length === 22), true);
+  assert.equal(message.characters?.length, 6);
+  assert.equal(message.characters?.every((row) => row.length === 22), true);
+  assert.equal(rows[0], "CODEX USAGE      RESET");
+  assert.equal(rows[1], "5H     77%       20:25");
+  assert.equal(rows[2][0], " ");
+  assert.equal(rows[2].slice(1, 21), "GGGGGGGGGGGGGGG     ");
+  assert.equal(rows[2][21], " ");
+  assert.equal(rows[3], "WEEK    6% 06/24 14:19");
+  assert.equal(rows[4][0], " ");
+  assert.equal(rows[4].slice(1, 21), "G                   ");
+  assert.equal(rows[4][21], " ");
+  assert.equal(rows[5], "                      ");
+  assert.equal(rows[0].indexOf("USAGE"), 6);
+  assert.equal(rows[1].slice(6, 10), " 77%");
+  assert.equal(rows[3].slice(6, 10), "  6%");
+  assert.equal(rows[0].slice(-5), "RESET");
+  assert.equal(rows[1].slice(-5), "20:25");
+  assert.equal(rows[3].slice(-11), "06/24 14:19");
+});
+
+test("renders Flagship status override in the last row and truncates overflow", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 0.5, resetAt: new Date("2026-06-19T20:25:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.5, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    {
+      board: "flagship",
+      timeZone: "America/Los_Angeles",
+      now: new Date("2026-06-19T00:00:00-07:00"),
+      statusMessage: "timeout using cached weekly quota"
+    }
+  );
+
+  assert.equal(message.text.split("\n")[5], "TIMEOUT USING CACHED W");
+});
+
+test("renders Flagship full quota as 100% in the aligned usage field", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T20:25:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
+    },
+    {
+      board: "flagship",
+      timeZone: "America/Los_Angeles",
+      now: new Date("2026-06-19T00:00:00-07:00"),
+      showPacing: false
+    }
+  );
+  const rows = message.text.split("\n");
+
+  assert.equal(rows[1], "5H    100%       20:25");
+  assert.equal(rows[3], "WEEK  100% 06/24 14:19");
+  assert.equal(rows[1].slice(6, 10), "100%");
+  assert.equal(rows[3].slice(6, 10), "100%");
+});
+
+test("renders Flagship pacing-off bars without red or blue blocks", () => {
+  const message = formatQuota(
+    {
+      fiveHour: { remainingRatio: 0.3, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
+      weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
+    },
+    { board: "flagship", timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00"), showPacing: false }
+  );
+
+  assert.equal(message.characters?.flat().includes(63), false);
+  assert.equal(message.characters?.flat().includes(67), false);
+  assert.equal(message.text.split("\n")[2].slice(1, 21), "GGGGGG              ");
 });
 
 test("demo mode drops five-hour quota by one percentage point", () => {
@@ -390,7 +488,7 @@ test("auto-start planner force mode bypasses flags quota records and cooldown wi
   });
 });
 
-test("codex plugin retains ping third-row messages until expiration", async () => {
+test("codex plugin retains ping status-message messages until expiration", async () => {
   let now = new Date("2026-06-19T00:00:00-07:00");
   let reads = 0;
   const snapshot = {
@@ -399,7 +497,7 @@ test("codex plugin retains ping third-row messages until expiration", async () =
   };
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
-    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt5.4minilow" } : snapshot;
+    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : snapshot;
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
 
   const first = await plugin.getUpdate();
@@ -431,7 +529,7 @@ test("codex plugin shows newer fetch failure above retained ping message", async
     }
 
     reads += 1;
-    return reads === 1 ? { snapshot, thirdRowMessage: "ping gpt5.4minilow" } : snapshot;
+    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : snapshot;
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
 
   await plugin.getUpdate();
@@ -458,7 +556,7 @@ test("codex plugin shows newer missing-window status above retained ping message
         fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
         weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
       },
-      thirdRowMessage: "ping gpt5.4minilow"
+      statusMessage: "ping gpt5.4minilow"
     };
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
 
@@ -626,7 +724,7 @@ test("codex plugin keeps stacked refresh message above reset available until it 
         fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
         weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
       },
-      thirdRowMessage: reads === 1 ? "ping gpt5.4minilow" : undefined,
+      statusMessage: reads === 1 ? "ping gpt5.4minilow" : undefined,
       rateLimitResetCreditsAvailableCount: 1
     };
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
@@ -645,7 +743,7 @@ test("codex plugin keeps stacked refresh message above reset available until it 
   assert.equal(resetAvailable.priority, "high");
 });
 
-test("codex plugin keeps sidecar error above reset available in the third-row stack", async () => {
+test("codex plugin keeps sidecar error above reset available in the status-message stack", async () => {
   const plugin = new CodexQuotaPlugin(async () => ({
     snapshot: {
       fiveHour: { remainingRatio: 0.6, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
@@ -661,7 +759,7 @@ test("codex plugin keeps sidecar error above reset available in the third-row st
   assert.equal(update.message.text.split("\n")[2], "AUTO PING FAIL ");
 });
 
-test("codex plugin keeps missing-window status above reset available in the third-row stack", async () => {
+test("codex plugin keeps missing-window status above reset available in the status-message stack", async () => {
   const plugin = new CodexQuotaPlugin(async () => ({
     snapshot: {
       weekly: { remainingRatio: 0, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
@@ -866,6 +964,25 @@ test("codex plugin renders missing row placeholder when no cached ingredient exi
   assert.equal(update.message.text.split("\n")[2], "MISS WK        ");
 });
 
+test("codex plugin can show board-size pending status in the Note status lane", async () => {
+  const plugin = new CodexQuotaPlugin(async () => ({
+    fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
+    weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
+  }), {
+    priority: "normal",
+    errorPriority: "low",
+    timeZone: "America/Los_Angeles",
+    board: "note",
+    statusMessage: () => "VB SIZE PEND"
+  });
+
+  const update = await plugin.getUpdate();
+
+  assert.equal(update.priority, "high");
+  assert.equal(update.message.text.split("\n")[2], "VB SIZE PEND   ");
+  assert.equal(update.message.characters?.[2].length, 15);
+});
+
 test("orchestrator asks each plugin for priority and message in one call", async () => {
   let reads = 0;
   const sent: VestaboardMessage[] = [];
@@ -967,6 +1084,93 @@ test("orchestrator retries unchanged message after failed send", async () => {
   assert.equal(attempts, 2);
 });
 
+test("board preference defaults to auto and validates explicit values", () => {
+  assert.equal(boardPreferenceFromEnv(undefined), "auto");
+  assert.equal(boardPreferenceFromEnv(""), "auto");
+  assert.equal(boardPreferenceFromEnv("note"), "note");
+  assert.equal(boardPreferenceFromEnv("flagship"), "flagship");
+  assert.equal(boardPreferenceFromEnv("auto"), "auto");
+  assert.throws(() => boardPreferenceFromEnv("wide"), /VESTABOARD_BOARD/);
+});
+
+test("auto board resolver assumes Note then retries until detection succeeds", async () => {
+  let calls = 0;
+  const resolver = createVestaboardBoardResolver({
+    preference: "auto",
+    async detectBoard() {
+      calls += 1;
+      return calls === 1 ? undefined : "flagship";
+    },
+    logger: { warn() {} }
+  });
+
+  assert.equal(await resolver.resolve(), "note");
+  assert.deepEqual(resolver.resolution(), { board: "note", source: "assumed" });
+  assert.equal(await resolver.resolve(), "flagship");
+  assert.deepEqual(resolver.resolution(), { board: "flagship", source: "confirmed" });
+  assert.equal(await resolver.resolve(), "flagship");
+  assert.equal(calls, 2);
+});
+
+test("explicit board resolver is confirmed and never detects", async () => {
+  let calls = 0;
+  const resolver = createVestaboardBoardResolver({
+    preference: "note",
+    async detectBoard() {
+      calls += 1;
+      return "flagship";
+    }
+  });
+
+  assert.equal(await resolver.resolve(), "note");
+  assert.deepEqual(resolver.resolution(), { board: "note", source: "confirmed" });
+  assert.equal(calls, 0);
+});
+
+test("Vestaboard board detection infers dimensions from Cloud API layout", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const board = await detectVestaboardBoard({
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return Response.json({
+        currentMessage: {
+          layout: JSON.stringify(Array.from({ length: 6 }, () => Array(22).fill(0)))
+        }
+      });
+    }
+  });
+
+  assert.equal(board, "flagship");
+  assert.equal(requests[0]?.url, "https://cloud.example/");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
+});
+
+test("Vestaboard board detection infers Note dimensions from Cloud API layout", async () => {
+  const board = await detectVestaboardBoard({
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async () => Response.json({
+      currentMessage: {
+        layout: JSON.stringify(Array.from({ length: 3 }, () => Array(15).fill(0)))
+      }
+    })
+  });
+
+  assert.equal(board, "note");
+});
+
+test("Vestaboard board detection returns undefined when no layout is available", async () => {
+  const board = await detectVestaboardBoard({
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async () => Response.json({ status: "error", message: "No message found for board" })
+  });
+
+  assert.equal(board, undefined);
+});
+
 test("vestaboard client prefers local API when local key is configured", async () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const client = createVestaboardClient({
@@ -988,6 +1192,66 @@ test("vestaboard client prefers local API when local key is configured", async (
   assert.equal(requests[0]?.init.body, "[[1,2,3]]");
 });
 
+test("vestaboard client detects Flagship through local API when local key is configured", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    localApiKey: "local-key",
+    cloudUrl: "https://cloud.example/",
+    localUrl: "http://local.example/message",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      if (init?.method === "GET") {
+        return Response.json(Array.from({ length: 6 }, () => Array(22).fill(0)));
+      }
+
+      return new Response("", { status: 200 });
+    }
+  });
+
+  const board = await client.detectBoard?.();
+  await client.send({ text: "ok", characters: [[1, 2, 3]] });
+
+  assert.equal(board, "flagship");
+  assert.equal(requests[0]?.url, "http://local.example/message");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+  assert.equal(requests[1]?.url, "http://local.example/message");
+  assert.equal((requests[1]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+  assert.equal(requests[1]?.init.body, "[[1,2,3]]");
+});
+
+test("vestaboard client detects Note through local API without cloud token", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return Response.json(Array.from({ length: 3 }, () => Array(15).fill(0)));
+    }
+  });
+
+  assert.equal(await client.detectBoard?.(), "note");
+  assert.equal(requests[0]?.url, "http://local.example/message");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
+});
+
+test("vestaboard client uses local detection in dry-run local mode", async () => {
+  const client = createVestaboardClient({
+    dryRun: true,
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async () => Response.json(Array.from({ length: 6 }, () => Array(22).fill(0))),
+    logger: { info() {} }
+  });
+
+  assert.equal(await client.detectBoard?.(), "flagship");
+});
+
 test("vestaboard client falls back to cloud API when local key is absent", async () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const client = createVestaboardClient({
@@ -1005,6 +1269,24 @@ test("vestaboard client falls back to cloud API when local key is absent", async
   assert.equal(requests[0]?.url, "https://cloud.example/");
   assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
   assert.equal(requests[0]?.init.body, "{\"text\":\"ok\"}");
+});
+
+test("vestaboard client detects board through cloud API when local key is absent", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return Response.json({ currentMessage: { layout: Array.from({ length: 6 }, () => Array(22).fill(0)) } });
+    }
+  });
+
+  assert.equal(await client.detectBoard?.(), "flagship");
+  assert.equal(requests[0]?.url, "https://cloud.example/");
+  assert.equal(requests[0]?.init.method, "GET");
+  assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Token"], "cloud-token");
 });
 
 test("error message is encodable for Vestaboard Note", () => {

@@ -17,6 +17,7 @@ export interface PluginUpdate {
 
 export interface VestaboardClient {
   send(message: VestaboardMessage): Promise<void>;
+  detectBoard?(): Promise<"note" | "flagship" | undefined>;
 }
 
 export class LastSentMessageCache {
