@@ -12,7 +12,6 @@ import {
   logQuotaReadFailure,
   missingQuotaWindows,
   missingStatus,
-  normalizeQuotaRead,
   QuotaIngredientCache,
   REFRESH_STATUS_MESSAGE_TTL_MS,
   TRANSIENT_STATUS_MESSAGE_TTL_MS,
@@ -53,13 +52,12 @@ export class CodexQuotaPlugin implements Plugin {
     const board = await this.resolveBoard();
 
     try {
-      const quotaRead = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
       const {
         snapshot: freshQuota,
         statusMessage,
         sidecarError,
         rateLimitResetCreditsAvailableCount
-      } = normalizeQuotaRead(quotaRead);
+      } = await this.readQuota({ forceAutoStart: demoMode?.forceAutoStart, now });
       const missingWindows = missingQuotaWindows(freshQuota);
       this.quotaWindowHistory.recordFreshSnapshot(freshQuota);
       this.quotaCache.update(freshQuota);
@@ -172,8 +170,8 @@ export function createCodexQuotaPlugin({
   now?: () => Date;
 } = {}): CodexQuotaPlugin {
   const quotaWindowHistory = new QuotaWindowHistory();
-  const readQuota = fixture
-    ? readFixtureQuota
+  const readQuota: QuotaPoller = fixture
+    ? async () => ({ snapshot: await readFixtureQuota() })
     : createCodexQuotaPoller({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk

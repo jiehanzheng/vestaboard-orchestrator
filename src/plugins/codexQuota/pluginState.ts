@@ -1,6 +1,6 @@
 import type { Priority, VestaboardMessage } from "../../orchestrator.js";
 import { sanitizeDisplayText } from "./display/index.js";
-import type { Logger, QuotaPollResult, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
+import type { Logger, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
 
 export const REFRESH_STATUS_MESSAGE_TTL_MS = 5 * 60_000;
 export const TRANSIENT_STATUS_MESSAGE_TTL_MS = 1_000;
@@ -23,14 +23,6 @@ interface QuotaCacheState {
 interface StatusMessage {
   message: string;
   expiresAt: Date;
-}
-
-export function normalizeQuotaRead(result: QuotaSnapshot | QuotaPollResult): QuotaPollResult {
-  if ("snapshot" in result) {
-    return result;
-  }
-
-  return { snapshot: result };
 }
 
 export class StatusMessageStack {

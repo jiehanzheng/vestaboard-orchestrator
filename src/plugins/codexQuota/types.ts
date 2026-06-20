@@ -23,7 +23,7 @@ export interface QuotaPollResult {
   rateLimitResetCreditsAvailableCount?: number;
 }
 
-export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaSnapshot | QuotaPollResult>;
+export type QuotaPoller = (options?: QuotaPollOptions) => Promise<QuotaPollResult>;
 export type QuotaRowName = "5H" | "WK";
 export type Logger = Pick<Console, "warn">;
 export type VestaboardBoard = "note" | "flagship";

@@ -12,6 +12,7 @@ import {
   formatQuota,
   QuotaWindowHistory,
   quotaFromRateLimits,
+  type QuotaSnapshot,
   selectAutoStartModel
 } from "../src/plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
@@ -669,10 +670,10 @@ test("codex plugin shows full-window reset time after two matching fresh ticks",
   let reads = 0;
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, {
     priority: "normal",
     errorPriority: "low",
@@ -702,7 +703,7 @@ test("codex plugin hides a changed full-window reset until it repeats", async ()
     }
   ];
   let reads = 0;
-  const plugin = new CodexQuotaPlugin(async () => snapshots[reads++] ?? snapshots.at(-1)!, {
+  const plugin = new CodexQuotaPlugin(async () => quotaPollResult(snapshots[reads++] ?? snapshots.at(-1)!), {
     priority: "normal",
     errorPriority: "low",
     timeZone: "America/Los_Angeles",
@@ -719,7 +720,7 @@ test("codex plugin hides a changed full-window reset until it repeats", async ()
 });
 
 test("codex plugin demo drop shows five-hour reset immediately without weekly visibility", async () => {
-  const plugin = new CodexQuotaPlugin(async () => ({
+  const plugin = new CodexQuotaPlugin(async () => quotaPollResult({
     fiveHour: { remainingRatio: 1, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
     weekly: { remainingRatio: 1, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
   }), {
@@ -750,7 +751,7 @@ test("codex plugin demo drop does not create stable full-window history", async 
       weekly: quotaSnapshot({ weekly: 1 }).weekly
     }
   ];
-  const plugin = new CodexQuotaPlugin(async () => snapshots[reads++] ?? snapshots.at(-1)!, {
+  const plugin = new CodexQuotaPlugin(async () => quotaPollResult(snapshots[reads++] ?? snapshots.at(-1)!), {
     priority: "normal",
     errorPriority: "low",
     timeZone: "America/Los_Angeles",
@@ -783,7 +784,7 @@ test("codex plugin retains ping status-message messages until expiration", async
   };
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
-    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : snapshot;
+    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : quotaPollResult(snapshot);
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", now: () => now });
 
   const first = await plugin.getUpdate();
@@ -815,7 +816,7 @@ test("codex plugin shows newer fetch failure above retained ping message", async
     }
 
     reads += 1;
-    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : snapshot;
+    return reads === 1 ? { snapshot, statusMessage: "ping gpt5.4minilow" } : quotaPollResult(snapshot);
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
 
   await plugin.getUpdate();
@@ -832,9 +833,9 @@ test("codex plugin shows newer missing-window status above retained ping message
   let partial = false;
   const plugin = new CodexQuotaPlugin(async () => {
     if (partial) {
-      return {
+      return quotaPollResult({
         fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
-      };
+      });
     }
 
     return {
@@ -1108,10 +1109,10 @@ test("codex plugin renders cached quota ingredients when a later quota read fail
       throw new Error("Codex app-server timed out after 30000ms.");
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn: (...args) => warnings.push(args) } });
 
   const good = await plugin.getUpdate();
@@ -1137,10 +1138,10 @@ test("codex plugin shows fetch fail for generic cached quota read failures", asy
       throw new Error("Codex app-server error: invalid request");
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
 
   await plugin.getUpdate();
@@ -1156,15 +1157,15 @@ test("codex plugin fills missing ingredients from cache and marks stale row when
   let partial = false;
   const plugin = new CodexQuotaPlugin(async () => {
     if (partial) {
-      return {
+      return quotaPollResult({
         fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
-      };
+      });
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn: (...args) => warnings.push(args) } });
 
   await plugin.getUpdate();
@@ -1191,10 +1192,10 @@ test("codex plugin recomputes cached ingredients instead of reusing rendered mes
       throw new Error("Codex app-server timed out after 10000ms.");
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:00:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
 
   const good = await plugin.getUpdate();
@@ -1215,10 +1216,10 @@ test("codex plugin expires transient error status after the next successful read
       throw new Error("Codex app-server timed out after 10000ms.");
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.8, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} }, now: () => now });
 
   await plugin.getUpdate();
@@ -1239,7 +1240,7 @@ test("codex plugin expires transient error status after the next successful read
 });
 
 test("codex plugin renders missing row placeholder when no cached ingredient exists", async () => {
-  const plugin = new CodexQuotaPlugin(async () => ({
+  const plugin = new CodexQuotaPlugin(async () => quotaPollResult({
     fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 }
   }), { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles", logger: { warn() {} } });
 
@@ -1251,7 +1252,7 @@ test("codex plugin renders missing row placeholder when no cached ingredient exi
 });
 
 test("codex plugin can show board-size pending status in the Note status lane", async () => {
-  const plugin = new CodexQuotaPlugin(async () => ({
+  const plugin = new CodexQuotaPlugin(async () => quotaPollResult({
     fiveHour: { remainingRatio: 0.7, resetAt: new Date("2026-06-19T03:00:00-07:00"), durationMins: 300 },
     weekly: { remainingRatio: 0.6, resetAt: new Date("2026-06-22T00:00:00-07:00"), durationMins: 10_080 }
   }), {
@@ -1274,10 +1275,10 @@ test("orchestrator asks each plugin for priority and message in one call", async
   const sent: VestaboardMessage[] = [];
   const plugin = new CodexQuotaPlugin(async () => {
     reads += 1;
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.5, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.5, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, { priority: "normal", errorPriority: "low", timeZone: "America/Los_Angeles" });
 
   await tick({
@@ -1634,10 +1635,10 @@ test("codex plugin restores queued demo mode when quota read fails", async () =>
       throw new Error("temporary quota failure");
     }
 
-    return {
+    return quotaPollResult({
       fiveHour: { remainingRatio: 0.76, resetAt: new Date("2026-06-19T02:44:00-07:00"), durationMins: 300 },
       weekly: { remainingRatio: 0.4, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
-    };
+    });
   }, {
     priority: "normal",
     errorPriority: "low",
@@ -1670,4 +1671,8 @@ function quotaSnapshot({ fiveHour, weekly }: { fiveHour?: number; weekly?: numbe
       ? undefined
       : { remainingRatio: weekly, resetAt: new Date("2026-06-24T14:19:00-07:00"), durationMins: 10_080 }
   };
+}
+
+function quotaPollResult(snapshot: QuotaSnapshot) {
+  return { snapshot };
 }
