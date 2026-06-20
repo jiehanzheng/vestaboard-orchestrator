@@ -29,9 +29,9 @@ Core environment variables configure the orchestrator and Vestaboard transport. 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `ORCHESTRATOR_INTERVAL_MINUTES` | `5` | How often the orchestrator polls plugins. |
-| `VESTABOARD_TOKEN` | | Vestaboard Cloud Read/Write API token. Used for Cloud sends and read-only Cloud auto board detection when no local API key is configured. |
+| `VESTABOARD_TOKEN` | | Vestaboard Cloud Read/Write API token. |
 | `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
-| `VESTABOARD_LOCAL_API_KEY` | | Local API key. If set, the orchestrator sends through the local API and uses the Local API current-message endpoint for read-only auto board detection. |
+| `VESTABOARD_LOCAL_API_KEY` | | Local API key. If set, this is preferred over the cloud API. |
 | `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
 | `VESTABOARD_BOARD` | `auto` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the current message layout through the configured Vestaboard API and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick. |
 
@@ -45,7 +45,7 @@ The Codex plugin reads `account/rateLimits/read` from `codex app-server` and ren
 
 | Configuration | Screenshot | What it means |
 | --- | --- | --- |
-| Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Green blocks are quota remaining. Red blocks mean quota is behind the time-remaining pace. Blue blocks mean quota is ahead of pace. |
+| Pacing on | ![Codex quota with pacing colors](docs/images/codex-pacing-on.png) | Green & blue blocks are quota remaining. Red blocks mean quota is behind the time-remaining pace (you should slow down). Blue blocks mean quota is ahead of pace (you can use more). |
 | Pacing off | ![Codex quota without pacing colors](docs/images/codex-pacing-off.png) | `CODEX_QUOTA_SHOW_PACING=off` hides pacing entirely: only green quota blocks and blanks remain. This is the clean, quiet mode for just checking remaining quota. |
 | Auto-start ping | ![Codex full quota ping status](docs/images/codex-ping.png) | When a watched window is still full at 100%, the plugin can send one minimal Codex ping to start a real reset window. The status lane briefly shows the ping model. |
 | Flagship | ![Codex quota on Vestaboard Flagship](docs/images/codex-flagship.png) | Auto-detected Flagship boards use a 6x22 layout with 20-cell centered bars, right-aligned reset labels, and a final-row status lane. |
