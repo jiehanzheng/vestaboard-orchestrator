@@ -1,6 +1,6 @@
 import type { Plugin, PluginUpdate, Priority } from "../../orchestrator.js";
 import { applyCodexQuotaDemo, type CodexQuotaDemoState } from "./demo.js";
-import { formatError, formatQuota } from "./display.js";
+import { formatError, formatQuota } from "./display/index.js";
 import {
   autoStartErrorStatus,
   bumpStatusPriority,
@@ -18,6 +18,7 @@ import {
   TRANSIENT_STATUS_MESSAGE_TTL_MS,
   StatusMessageStack
 } from "./pluginState.js";
+import { QuotaWindowHistory } from "./quotaWindowHistory.js";
 import { createCodexQuotaPoller, readFixtureQuota } from "./quotaSource.js";
 import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot, VestaboardBoard } from "./types.js";
 
@@ -25,6 +26,7 @@ export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
   private readonly quotaCache = new QuotaIngredientCache();
   private readonly statusMessages = new StatusMessageStack();
+  private readonly quotaWindowHistory: QuotaWindowHistory;
 
   constructor(
     private readonly readQuota: QuotaPoller,
@@ -39,8 +41,11 @@ export class CodexQuotaPlugin implements Plugin {
       restoreDemoMode?: (demo: CodexQuotaDemoState) => void;
       logger?: Logger;
       now?: () => Date;
+      quotaWindowHistory?: QuotaWindowHistory;
     }
-  ) {}
+  ) {
+    this.quotaWindowHistory = options.quotaWindowHistory ?? new QuotaWindowHistory();
+  }
 
   async getUpdate(): Promise<PluginUpdate> {
     const now = this.options.now?.() ?? new Date();
@@ -56,6 +61,7 @@ export class CodexQuotaPlugin implements Plugin {
         rateLimitResetCreditsAvailableCount
       } = normalizeQuotaRead(quotaRead);
       const missingWindows = missingQuotaWindows(freshQuota);
+      this.quotaWindowHistory.recordFreshSnapshot(freshQuota);
       this.quotaCache.update(freshQuota);
       const displayQuota = this.quotaCache.merge(freshQuota);
       const staleRows = cachedRowsUsedFor(missingWindows, freshQuota, displayQuota);
@@ -75,7 +81,8 @@ export class CodexQuotaPlugin implements Plugin {
         showPacing: this.options.showPacing,
         board,
         statusMessage: displayStatusMessage,
-        staleRows
+        staleRows,
+        resetVisibility: this.quotaWindowHistory.resetVisibilityFor(displayQuota)
       });
 
       if (missingWindows.length > 0) {
@@ -106,7 +113,8 @@ export class CodexQuotaPlugin implements Plugin {
           showPacing: this.options.showPacing,
           board,
           statusMessage: displayStatusMessage,
-          staleRows: cachedRowsPresentIn(cachedQuota)
+          staleRows: cachedRowsPresentIn(cachedQuota),
+          resetVisibility: this.quotaWindowHistory.resetVisibilityFor(cachedQuota)
         })
       : formatError(error, { board });
     logQuotaReadFailure(this.options.logger, error, this.options.errorPriority, message, this.quotaCache.state());
@@ -162,13 +170,14 @@ export function createCodexQuotaPlugin({
   logger?: Logger;
   now?: () => Date;
 } = {}): CodexQuotaPlugin {
+  const quotaWindowHistory = new QuotaWindowHistory();
   const readQuota = fixture
     ? readFixtureQuota
     : createCodexQuotaPoller({
         fiveHour: autoStartWindow5h,
         weekly: autoStartWindowWk
-      });
-  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, board, statusMessage, takeDemoMode, restoreDemoMode, logger, now });
+      }, quotaWindowHistory);
+  return new CodexQuotaPlugin(readQuota, { priority, errorPriority, timeZone, showPacing, board, statusMessage, takeDemoMode, restoreDemoMode, logger, now, quotaWindowHistory });
 }
 
 function resetAvailableStatus(snapshot: QuotaSnapshot, availableCount: number | undefined): string | undefined {

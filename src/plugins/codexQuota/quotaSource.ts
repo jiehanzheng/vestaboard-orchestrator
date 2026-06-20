@@ -1,5 +1,6 @@
 import { withCodexAppServer } from "./appServer.js";
 import { CodexAutoStartSidecar, type AutoStartQuotaConfig } from "./autoStartSidecar.js";
+import { QuotaWindowHistory } from "./quotaWindowHistory.js";
 import type { QuotaPollOptions, QuotaPoller, QuotaPollResult, QuotaSnapshot, QuotaWindow } from "./types.js";
 
 interface RateWindow {
@@ -26,8 +27,8 @@ export interface RateLimitsResult {
 const FIVE_HOUR_MINS = 300;
 const WEEKLY_MINS = 10_080;
 
-export function createCodexQuotaPoller(autoStartConfig: AutoStartQuotaConfig): QuotaPoller {
-  const autoStartSidecar = new CodexAutoStartSidecar(autoStartConfig);
+export function createCodexQuotaPoller(autoStartConfig: AutoStartQuotaConfig, history = new QuotaWindowHistory()): QuotaPoller {
+  const autoStartSidecar = new CodexAutoStartSidecar(autoStartConfig, history);
   return async (options: QuotaPollOptions = {}) => readCodexQuotaWithSidecar(autoStartSidecar, options);
 }
 

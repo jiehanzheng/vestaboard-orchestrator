@@ -1,5 +1,5 @@
 import type { Priority, VestaboardMessage } from "../../orchestrator.js";
-import { sanitizeDisplayText } from "./display.js";
+import { sanitizeDisplayText } from "./display/index.js";
 import type { Logger, QuotaPollResult, QuotaRowName, QuotaSnapshot, QuotaWindow } from "./types.js";
 
 export const REFRESH_STATUS_MESSAGE_TTL_MS = 5 * 60_000;
