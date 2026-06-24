@@ -49,7 +49,7 @@ function pacingColor(window: QuotaWindow, now: Date): number {
 }
 
 function timeMarkerIndex(window: QuotaWindow, now: Date, width: number): number {
-  return Math.min(width - 1, Math.max(0, Math.round(timeRemainingRatio(window, now) * width)));
+  return Math.min(width - 1, Math.max(0, Math.ceil(timeRemainingRatio(window, now) * width) - 1));
 }
 
 function timeRemainingRatio(window: QuotaWindow, now: Date): number {
