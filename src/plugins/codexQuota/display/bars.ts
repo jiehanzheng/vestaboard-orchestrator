@@ -2,7 +2,10 @@ import type { QuotaWindow } from "../types.js";
 import { BLANK, BLUE, charCode, clamp, GREEN, ORANGE, RED, WHITE, YELLOW } from "./shared.js";
 
 export function quotaBar(window: QuotaWindow, now: Date, width: number, stale = false, showPacing = true): number[] {
-  const quotaBlocks = Math.round(clamp(window.remainingRatio) * width);
+  const remainingRatio = clamp(window.remainingRatio);
+  const quotaBlocks = remainingRatio > 0
+    ? Math.max(1, Math.round(remainingRatio * width))
+    : 0;
   const fill = showPacing ? pacingColor(window, now) : GREEN;
   const bar = [
     ...Array(quotaBlocks).fill(fill),
