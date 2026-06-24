@@ -62,7 +62,7 @@ test("renders partial quota when only the five-hour window is present", () => {
 
   assert.ok(snapshot.fiveHour);
   assert.equal(snapshot.weekly, undefined);
-  assert.equal(message.text, "5HGGGGGGGGW 80%\nWK          --%\n0244♥--/-------");
+  assert.equal(message.text, "5HGGGGGGGW  80%\nWK          --%\n0244♥--/-------");
   assert.deepEqual(message.characters?.[1], [23, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 44, 54]);
   assert.deepEqual(message.characters?.[2], [36, 28, 30, 30, 62, 44, 44, 59, 44, 44, 44, 44, 44, 44, 44]);
 });
@@ -124,6 +124,20 @@ test("preserves official Vestaboard color character constants", () => {
     WHITE: 69,
     BLACK: 70
   });
+});
+
+test("renders equal-width 5-hour time marker buckets on Vestaboard Note", () => {
+  const window = {
+    remainingRatio: 1,
+    resetAt: new Date("2026-06-19T05:00:00-07:00"),
+    durationMins: 300
+  };
+  const snapshot = { fiveHour: window, weekly: undefined };
+
+  assert.equal(formatQuota(snapshot, { now: new Date("2026-06-19T00:00:00-07:00") }).text.split("\n")[0].slice(2, 12), "GGGGGGGGGW");
+  assert.equal(formatQuota(snapshot, { now: new Date("2026-06-19T00:29:59-07:00") }).text.split("\n")[0].slice(2, 12), "GGGGGGGGGW");
+  assert.equal(formatQuota(snapshot, { now: new Date("2026-06-19T00:30:00-07:00") }).text.split("\n")[0].slice(2, 12), "GGGGGGGGWG");
+  assert.equal(formatQuota(snapshot, { now: new Date("2026-06-19T04:59:00-07:00") }).text.split("\n")[0].slice(2, 12), "WGGGGGGGGG");
 });
 
 test("status message stack prunes expired messages before retaining new ones", () => {
@@ -262,8 +276,8 @@ test("renders red quota fill and white time marker when quota is far behind expe
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text, "5HRRR   W   30%\nWKGGGGWG    60%\n0300♥06/22-0000");
-  assert.deepEqual(message.characters?.[0], [31, 8, 63, 63, 63, 0, 0, 0, 69, 0, 0, 0, 29, 36, 54]);
+  assert.equal(message.text, "5HRRR  W    30%\nWKGGGGWG    60%\n0300♥06/22-0000");
+  assert.deepEqual(message.characters?.[0], [31, 8, 63, 63, 63, 0, 0, 69, 0, 0, 0, 0, 29, 36, 54]);
 });
 
 test("renders green quota fill and white time marker when quota is ahead of expected remaining", () => {
@@ -283,8 +297,8 @@ test("renders green quota fill and white time marker when quota is ahead of expe
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[0], "5HGGGGWGGG  80%");
-  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 66, 69, 66, 66, 66, 0, 0, 34, 36, 54]);
+  assert.equal(message.text.split("\n")[0], "5HGGGWGGGG  80%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 66, 66, 66, 69, 66, 66, 66, 66, 0, 0, 34, 36, 54]);
 });
 
 test("renders yellow quota fill when quota is slightly behind expected remaining", () => {
@@ -304,8 +318,8 @@ test("renders yellow quota fill when quota is slightly behind expected remaining
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[0], "5HYYYYW     35%");
-  assert.deepEqual(message.characters?.[0], [31, 8, 65, 65, 65, 65, 69, 0, 0, 0, 0, 0, 29, 31, 54]);
+  assert.equal(message.text.split("\n")[0], "5HYYYW      35%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 65, 65, 65, 69, 0, 0, 0, 0, 0, 0, 29, 31, 54]);
 });
 
 test("renders orange quota fill when quota is moderately behind expected remaining", () => {
@@ -325,8 +339,8 @@ test("renders orange quota fill when quota is moderately behind expected remaini
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[0], "5HOOO W     30%");
-  assert.deepEqual(message.characters?.[0], [31, 8, 64, 64, 64, 0, 69, 0, 0, 0, 0, 0, 29, 36, 54]);
+  assert.equal(message.text.split("\n")[0], "5HOOOW      30%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 64, 64, 64, 69, 0, 0, 0, 0, 0, 0, 29, 36, 54]);
 });
 
 test("renders only the white marker when it covers the only quota cell", () => {
@@ -367,8 +381,8 @@ test("renders white marker without quota fill when quota is empty but time remai
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.equal(message.text.split("\n")[0], "5H    W      0%");
-  assert.deepEqual(message.characters?.[0], [31, 8, 0, 0, 0, 0, 69, 0, 0, 0, 0, 0, 0, 36, 54]);
+  assert.equal(message.text.split("\n")[0], "5H   W       0%");
+  assert.deepEqual(message.characters?.[0], [31, 8, 0, 0, 0, 69, 0, 0, 0, 0, 0, 0, 0, 36, 54]);
 });
 
 test("renders a minimum Note quota block for nonzero quota below one rounded cell", () => {
@@ -388,7 +402,7 @@ test("renders a minimum Note quota block for nonzero quota below one rounded cel
     { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") }
   );
 
-  assert.deepEqual(message.characters?.[0], [31, 8, RED, 0, 0, 0, WHITE, 0, 0, 0, 0, 0, 0, 30, 54]);
+  assert.deepEqual(message.characters?.[0], [31, 8, RED, 0, 0, WHITE, 0, 0, 0, 0, 0, 0, 0, 30, 54]);
 });
 
 test("renders only green quota blocks when pacing is hidden", () => {
@@ -526,9 +540,9 @@ test("renders Flagship ratio pacing with white marker on 20-cell bars", () => {
   const rows = message.text.split("\n");
 
   assert.equal(rows.every((row) => row.length === 22), true);
-  assert.equal(rows[2].slice(1, 21), "GGGGGGGGWGGGGGGG    ");
-  assert.equal(rows[4].slice(1, 21), "OOOOOO  W           ");
-  assert.deepEqual(message.characters?.[4].slice(1, 10), [64, 64, 64, 64, 64, 64, 0, 0, 69]);
+  assert.equal(rows[2].slice(1, 21), "GGGGGGGWGGGGGGGG    ");
+  assert.equal(rows[4].slice(1, 21), "OOOOOO W            ");
+  assert.deepEqual(message.characters?.[4].slice(1, 10), [64, 64, 64, 64, 64, 64, 0, 69, 0]);
 });
 
 test("renders Flagship marker-only bar when the marker covers the only quota cell", () => {
@@ -542,9 +556,9 @@ test("renders Flagship marker-only bar when the marker covers the only quota cel
   const rows = message.text.split("\n");
 
   assert.equal(rows[2].slice(1, 21), "W                   ");
-  assert.equal(rows[4].slice(1, 21), "        W           ");
+  assert.equal(rows[4].slice(1, 21), "       W            ");
   assert.equal(message.characters?.[2][1], 69);
-  assert.equal(message.characters?.[4][9], 69);
+  assert.equal(message.characters?.[4][8], 69);
 });
 
 test("renders a minimum Flagship quota block for nonzero quota below one rounded cell", () => {
@@ -557,7 +571,7 @@ test("renders a minimum Flagship quota block for nonzero quota below one rounded
   );
   const rows = message.text.split("\n");
 
-  assert.equal(rows[2].slice(1, 21), "R       W           ");
+  assert.equal(rows[2].slice(1, 21), "R      W            ");
 });
 
 test("demo mode drops five-hour quota by one percentage point", () => {
@@ -584,7 +598,7 @@ test("demo mode accumulates repeated drops", () => {
   const message = formatQuota(snapshot, { timeZone: "America/Los_Angeles", now: new Date("2026-06-19T00:00:00-07:00") });
 
   assert.equal(snapshot.fiveHour?.remainingRatio, 0.74);
-  assert.equal(message.text.split("\n")[0], "5HGGGGGGW   74%");
+  assert.equal(message.text.split("\n")[0], "5HGGGGGWG   74%");
 });
 
 test("auto-start model selection skips spark and prefers the last nano model", () => {

@@ -53,12 +53,12 @@ The Codex plugin reads `account/rateLimits/read` from `codex app-server` and ren
 The first two rows are quota windows:
 
 ```text
-5HRRR   W   30%
+5HRRR  W    30%
 WKGGGGWG    60%
 0300♥06/22-0000
 ```
 
-`G`, `Y`, `O`, `R`, and `W` in dry-run output stand for Vestaboard green, yellow, orange, red, and white block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room. Any nonzero quota renders at least one quota block, though the white time marker can still cover it when both land on the same cell.
+`G`, `Y`, `O`, `R`, and `W` in dry-run output stand for Vestaboard green, yellow, orange, red, and white block character codes. The actual API payload sends `characters`, not plain text. Percentages are remaining quota, derived from `100 - usedPercent`. Full quota renders as `100` on Note so the row still fits, and as `100%` on Flagship where the larger usage field has room. Any nonzero quota renders at least one quota block, though the white time marker can still cover it when both land on the same cell. The white marker moves in equal remaining-time buckets: on Note, each 5-hour cell represents 30 minutes.
 
 On Note, the status lane is the third physical row. It normally shows reset timing: 5-hour reset time, weekly reset date, and weekly reset time. Current-cycle statuses, fetch failures, missing quota windows, reset availability, and auto-start ping notices temporarily replace reset timing; expired statuses are pruned on later ticks.
 
