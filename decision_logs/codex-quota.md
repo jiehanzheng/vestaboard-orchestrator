@@ -5,3 +5,4 @@
 - Do not make display rendering infer reset trust from percentage text alone; keep reset timestamp observation policy outside board-specific rendering.
 - Official Vestaboard color constants are API character mappings, not renderer-local implementation details. Preserve global constants for red `63`, orange `64`, yellow `65`, green `66`, blue `67`, violet `68`, white `69`, and black `70` even if a specific renderer does not currently emit every color.
 - Avoid compatibility aliases that give the same Codex quota state object multiple public names. Use the real owning type and method names directly instead of export-level renames such as auto-start state aliases.
+- White time-marker cells must continue to take precedence over quota color cells, including low-quota minimum-fill cells.
