@@ -26,17 +26,17 @@ Docker is the intended runtime path.
 
 Core environment variables configure the orchestrator and Vestaboard transport. Plugin-specific variables are documented in each plugin section below.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `ORCHESTRATOR_INTERVAL_MINUTES` | `5` | How often the orchestrator polls plugins. |
-| `VESTABOARD_TOKEN` | **You MUST set either this or VESTABOARD_LOCAL_API_KEY** | Vestaboard Cloud Read/Write API token. |
-| `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
-| `VESTABOARD_LOCAL_API_KEY` | **You MUST set either this or VESTABOARD_TOKEN** | Local API key. If set, this is preferred over the cloud API. |
-| `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
-| `VESTABOARD_LOCAL_MESSAGE_STRATEGY` | `row` | Local API message transition strategy: `column`, `reverse-column`, `edges-to-center`, `row`, `diagonal`, or `random`. Invalid values log an error, use the default, and show `check logs` on the startup message. |
-| `VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS` | `2000` | Local API transition delay between animation steps. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message. |
-| `VESTABOARD_LOCAL_MESSAGE_STEP_SIZE` | `1` | Local API transition step size. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message. |
-| `VESTABOARD_BOARD` | `auto` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the current message layout through the configured Vestaboard API and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick. |
+| Variable | Description |
+| --- | --- |
+| `ORCHESTRATOR_INTERVAL_MINUTES` | How often the orchestrator polls plugins.<br><br>Default: `5` |
+| `VESTABOARD_TOKEN` | Vestaboard Cloud Read/Write API token.<br><br>Default: **You MUST set either this or VESTABOARD_LOCAL_API_KEY** |
+| `VESTABOARD_CLOUD_URL` | Vestaboard Cloud API endpoint.<br><br>Default: `https://cloud.vestaboard.com/` |
+| `VESTABOARD_LOCAL_API_KEY` | Local API key. If set, this is preferred over the cloud API.<br><br>Default: **You MUST set either this or VESTABOARD_TOKEN** |
+| `VESTABOARD_LOCAL_URL` | Local API endpoint.<br><br>Default: `http://vestaboard.local:7000/local-api/message` |
+| `VESTABOARD_LOCAL_MESSAGE_STRATEGY` | Local API message transition strategy: `column`, `reverse-column`, `edges-to-center`, `row`, `diagonal`, or `random`. Invalid values log an error, use the default, and show `check logs` on the startup message.<br><br>Default: `row` |
+| `VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS` | Local API transition delay between animation steps. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message.<br><br>Default: `2000` |
+| `VESTABOARD_LOCAL_MESSAGE_STEP_SIZE` | Local API transition step size. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message.<br><br>Default: `1` |
+| `VESTABOARD_BOARD` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the current message layout through the configured Vestaboard API and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick.<br><br>Default: `auto` |
 
 On startup, the orchestrator sends a `vbmux via local` or `vbmux via cloud` banner with the current `yyyymmdd hhmm` timestamp and enabled plugin slugs, then waits 60 seconds before polling. The loop is serial: it runs one plugin pass, sends the selected message, waits `ORCHESTRATOR_INTERVAL_MINUTES`, then starts the next pass. If the winning message is unchanged from the last successful send, the orchestrator skips the Vestaboard API call.
 
@@ -86,17 +86,17 @@ If the host login directory is somewhere else, set `CODEX_HOST_DIR` in `.env` to
 
 #### Codex Env Config
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `CODEX_QUOTA_SOURCE` | `app-server` | Use `fixture` for offline formatting checks. |
-| `CODEX_QUOTA_PRIORITY` | `normal` | Plugin priority: `low`, `normal`, `high`, `urgent`, or a number. |
-| `CODEX_QUOTA_ERROR_PRIORITY` | `low` | Priority used when the plugin can only render an error or incomplete quota. |
-| `CODEX_QUOTA_TIME_ZONE` | local process timezone | Time zone used for reset labels. |
-| `CODEX_QUOTA_SHOW_PACING` | `on` | `on` overlays red/blue pacing blocks; `off` shows only green quota blocks and blanks. |
-| `CODEX_HOST_DIR` | `${HOME}/.codex` | Host Codex config directory mounted into Docker at `/home/node/.codex`. |
-| `CODEX_AUTO_START_WINDOW_5H` | `false` | Ping Codex once when the 5-hour window is completely unused at 100%. |
-| `CODEX_AUTO_START_WINDOW_WK` | `false` | Ping Codex once when the weekly window is completely unused at 100%. |
-| `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | `5` | How long normal polling pauses after a signal-triggered demo render. |
+| Variable | Description |
+| --- | --- |
+| `CODEX_QUOTA_SOURCE` | Use `fixture` for offline formatting checks.<br><br>Default: `app-server` |
+| `CODEX_QUOTA_PRIORITY` | Plugin priority: `low`, `normal`, `high`, `urgent`, or a number.<br><br>Default: `normal` |
+| `CODEX_QUOTA_ERROR_PRIORITY` | Priority used when the plugin can only render an error or incomplete quota.<br><br>Default: `low` |
+| `CODEX_QUOTA_TIME_ZONE` | Time zone used for reset labels.<br><br>Default: local process timezone |
+| `CODEX_QUOTA_SHOW_PACING` | `on` overlays red/blue pacing blocks; `off` shows only green quota blocks and blanks.<br><br>Default: `on` |
+| `CODEX_HOST_DIR` | Host Codex config directory mounted into Docker at `/home/node/.codex`.<br><br>Default: `${HOME}/.codex` |
+| `CODEX_AUTO_START_WINDOW_5H` | Ping Codex once when the 5-hour window is completely unused at 100%.<br><br>Default: `false` |
+| `CODEX_AUTO_START_WINDOW_WK` | Ping Codex once when the weekly window is completely unused at 100%.<br><br>Default: `false` |
+| `CODEX_QUOTA_DEMO_PAUSE_MINUTES` | How long normal polling pauses after a signal-triggered demo render.<br><br>Default: `5` |
 
 When auto-start is enabled, the plugin lists visible Codex models, skips `-spark` models, prefers the last `-nano` model, then the last `-mini` model, then the last remaining model. It sends a read-only ephemeral prompt: `Reply exactly: ok. Do not inspect files or run commands.` A running process auto-starts at most once per reset timestamp and never pings more than once every 30 minutes unless forced by demo mode.
 
