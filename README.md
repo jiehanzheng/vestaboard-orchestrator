@@ -33,6 +33,9 @@ Core environment variables configure the orchestrator and Vestaboard transport. 
 | `VESTABOARD_CLOUD_URL` | `https://cloud.vestaboard.com/` | Vestaboard Cloud API endpoint. |
 | `VESTABOARD_LOCAL_API_KEY` | **You MUST set either this or VESTABOARD_TOKEN** | Local API key. If set, this is preferred over the cloud API. |
 | `VESTABOARD_LOCAL_URL` | `http://vestaboard.local:7000/local-api/message` | Local API endpoint. |
+| `VESTABOARD_LOCAL_MESSAGE_STRATEGY` | `row` | Local API message transition strategy: `column`, `reverse-column`, `edges-to-center`, `row`, `diagonal`, or `random`. Invalid values log an error, use the default, and show `check logs` on the startup message. |
+| `VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS` | `2000` | Local API transition delay between animation steps. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message. |
+| `VESTABOARD_LOCAL_MESSAGE_STEP_SIZE` | `1` | Local API transition step size. Invalid, non-finite, or non-positive values log an error, use the default, and show `check logs` on the startup message. |
 | `VESTABOARD_BOARD` | `auto` | Board renderer: `auto`, `note`, or `flagship`. In `auto`, the orchestrator reads the current message layout through the configured Vestaboard API and detects Note (`3x15`) or Flagship (`6x22`). If detection cannot determine the board type, it assumes Note for that tick and retries on the next tick. |
 
 On startup, the orchestrator sends a `vbmux via local` or `vbmux via cloud` banner with the current `yyyymmdd hhmm` timestamp and enabled plugin slugs, then waits 60 seconds before polling. The loop is serial: it runs one plugin pass, sends the selected message, waits `ORCHESTRATOR_INTERVAL_MINUTES`, then starts the next pass. If the winning message is unchanged from the last successful send, the orchestrator skips the Vestaboard API call.

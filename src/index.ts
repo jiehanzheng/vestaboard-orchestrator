@@ -3,7 +3,7 @@ import { createCodexQuotaPlugin } from "./plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick } from "./orchestrator.js";
 import { sendStartupMessage } from "./startupMessage.js";
 import { boardPreferenceFromEnv, createVestaboardBoardResolver } from "./vestaboardBoard.js";
-import { createVestaboardClient } from "./vestaboard.js";
+import { createVestaboardClient, localMessageTransitionOptionsFromEnv } from "./vestaboard.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -14,13 +14,15 @@ const vestaboardTransport = process.env.VESTABOARD_LOCAL_API_KEY ? "local" : "cl
 const sentMessageCache = new LastSentMessageCache();
 const demoPauseMinutes = Number(process.env.CODEX_QUOTA_DEMO_PAUSE_MINUTES ?? "5");
 const demoSignals = new DemoSignalController();
+const localMessageTransition = localMessageTransitionOptionsFromEnv(process.env, console);
 
 const vestaboard = createVestaboardClient({
   dryRun,
   token: process.env.VESTABOARD_TOKEN,
   localApiKey: process.env.VESTABOARD_LOCAL_API_KEY,
   cloudUrl: process.env.VESTABOARD_CLOUD_URL,
-  localUrl: process.env.VESTABOARD_LOCAL_URL
+  localUrl: process.env.VESTABOARD_LOCAL_URL,
+  localMessageTransition: localMessageTransition.options
 });
 const boardResolver = createVestaboardBoardResolver({
   preference: boardPreferenceFromEnv(process.env.VESTABOARD_BOARD),
@@ -87,7 +89,8 @@ async function startup(): Promise<void> {
     vestaboard,
     board: () => boardResolver.resolve(),
     transport: vestaboardTransport,
-    timeZone: process.env.CODEX_QUOTA_TIME_ZONE
+    timeZone: process.env.CODEX_QUOTA_TIME_ZONE,
+    statusLine: localMessageTransition.hasError ? "check logs" : undefined
   });
   await demoSignals.sleep(startupPollDelayMs);
 }

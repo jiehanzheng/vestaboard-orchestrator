@@ -12,13 +12,15 @@ export function formatStartupMessage({
   now,
   timeZone,
   board,
-  transport
+  transport,
+  statusLine
 }: {
   plugins: Plugin[];
   now: Date;
   timeZone?: string;
   board: VestaboardBoard;
   transport: "local" | "cloud";
+  statusLine?: string;
 }): VestaboardMessage {
   const { rows: rowCount, columns } = BOARD_SIZES[board];
   const enabledSlugs = plugins.map((plugin) => plugin.slug ?? plugin.id).join(",");
@@ -31,6 +33,9 @@ export function formatStartupMessage({
 
   while (rows.length < rowCount) {
     rows.push(row("", columns));
+  }
+  if (statusLine !== undefined) {
+    rows[rowCount - 1] = row(statusLine, columns);
   }
 
   return {
@@ -45,6 +50,7 @@ export async function sendStartupMessage({
   board,
   transport,
   timeZone,
+  statusLine,
   now = () => new Date(),
   logger = console
 }: {
@@ -53,11 +59,19 @@ export async function sendStartupMessage({
   board: () => Promise<VestaboardBoard>;
   transport: "local" | "cloud";
   timeZone?: string;
+  statusLine?: string;
   now?: () => Date;
   logger?: Pick<Console, "info" | "warn">;
 }): Promise<void> {
   try {
-    await vestaboard.send(formatStartupMessage({ plugins, now: now(), timeZone, board: await board(), transport }));
+    await vestaboard.send(formatStartupMessage({
+      plugins,
+      now: now(),
+      timeZone,
+      board: await board(),
+      transport,
+      statusLine
+    }));
     logger.info("Sent Vestaboard startup message.");
   } catch (error) {
     logger.warn("Vestaboard startup message send failed.", error);

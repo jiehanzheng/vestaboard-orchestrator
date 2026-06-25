@@ -19,7 +19,12 @@ import { BLACK, BLUE, GREEN, ORANGE, RED, VIOLET, WHITE, YELLOW } from "../src/p
 import { StatusMessageStack } from "../src/plugins/codexQuota/pluginState.js";
 import { formatStartupMessage } from "../src/startupMessage.js";
 import { createVestaboardBoardResolver, boardPreferenceFromEnv } from "../src/vestaboardBoard.js";
-import { createVestaboardClient, detectVestaboardBoard } from "../src/vestaboard.js";
+import {
+  createVestaboardClient,
+  detectLocalVestaboardBoard,
+  detectVestaboardBoard,
+  localMessageTransitionOptionsFromEnv
+} from "../src/vestaboard.js";
 
 test("renders startup message with date time and enabled plugin slugs for Vestaboard Note", () => {
   const message = formatStartupMessage({
@@ -49,6 +54,22 @@ test("renders comma-separated startup plugin slugs without spaces", () => {
 
   assert.equal(message.text.split("\n")[0], "VBMUX VIA CLOUD       ");
   assert.equal(message.text.split("\n")[2], "CODEX,WEATHER         ");
+});
+
+test("renders startup status on the last physical row", () => {
+  const message = formatStartupMessage({
+    plugins: [
+      { id: "codex-quota", slug: "codex", getUpdate: async () => ({ priority: "normal", message: { text: "" } }) }
+    ],
+    now: new Date("2026-06-24T21:19:00Z"),
+    board: "flagship",
+    transport: "local",
+    statusLine: "check logs"
+  });
+
+  const rows = message.text.split("\n");
+  assert.equal(rows[2], "CODEX                 ");
+  assert.equal(rows[5], "CHECK LOGS            ");
 });
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
@@ -1682,6 +1703,80 @@ test("Vestaboard board detection returns undefined when no layout is available",
   assert.equal(board, undefined);
 });
 
+test("Cloud Vestaboard board detection logs raw response only when detection fails", async () => {
+  const messages: string[] = [];
+  const board = await detectVestaboardBoard({
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async () => Response.json({ status: "error", message: "No message found for board" }),
+    logger: {
+      info(message) {
+        messages.push(message);
+      }
+    }
+  });
+
+  assert.equal(board, undefined);
+  assert.deepEqual(messages, [
+    "Vestaboard Cloud API raw response: {\"status\":\"error\",\"message\":\"No message found for board\"}"
+  ]);
+});
+
+test("Cloud Vestaboard board detection does not log raw response when detection succeeds", async () => {
+  const messages: string[] = [];
+  const board = await detectVestaboardBoard({
+    token: "cloud-token",
+    cloudUrl: "https://cloud.example/",
+    fetchImpl: async () => Response.json({
+      currentMessage: {
+        layout: Array.from({ length: 6 }, () => Array(22).fill(0))
+      }
+    }),
+    logger: {
+      info(message) {
+        messages.push(message);
+      }
+    }
+  });
+
+  assert.equal(board, "flagship");
+  assert.deepEqual(messages, []);
+});
+
+test("local Vestaboard board detection detects message layout without raw logging", async () => {
+  const messages: string[] = [];
+  const board = await detectLocalVestaboardBoard({
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async () => Response.json({ message: Array.from({ length: 3 }, () => Array(15).fill(0)) }),
+    logger: {
+      info(message) {
+        messages.push(message);
+      }
+    }
+  });
+
+  assert.equal(board, "note");
+  assert.deepEqual(messages, []);
+});
+
+test("local Vestaboard board detection logs raw response only when detection fails", async () => {
+  const messages: string[] = [];
+  const board = await detectLocalVestaboardBoard({
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    fetchImpl: async () => Response.json({ status: "ok", message: "No message found" }),
+    logger: {
+      info(message) {
+        messages.push(message);
+      }
+    }
+  });
+
+  assert.equal(board, undefined);
+  assert.equal(messages[0], "Vestaboard Local API raw response: {\"status\":\"ok\",\"message\":\"No message found\"}");
+});
+
 test("vestaboard client prefers local API when local key is configured", async () => {
   const requests: { url: string; init: RequestInit }[] = [];
   const client = createVestaboardClient({
@@ -1700,7 +1795,35 @@ test("vestaboard client prefers local API when local key is configured", async (
 
   assert.equal(requests[0]?.url, "http://local.example/message");
   assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
-  assert.equal(requests[0]?.init.body, "[[1,2,3]]");
+  assert.equal(
+    requests[0]?.init.body,
+    "{\"characters\":[[1,2,3]],\"strategy\":\"row\",\"step_interval_ms\":2000,\"step_size\":1}"
+  );
+});
+
+test("vestaboard client uses configured local message transitions", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createVestaboardClient({
+    dryRun: false,
+    localApiKey: "local-key",
+    localUrl: "http://local.example/message",
+    localMessageTransition: {
+      strategy: "diagonal",
+      stepIntervalMs: 2500,
+      stepSize: 3
+    },
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+      return new Response("", { status: 200 });
+    }
+  });
+
+  await client.send({ text: "ok", characters: [[1, 2, 3]] });
+
+  assert.equal(
+    requests[0]?.init.body,
+    "{\"characters\":[[1,2,3]],\"strategy\":\"diagonal\",\"step_interval_ms\":2500,\"step_size\":3}"
+  );
 });
 
 test("vestaboard client detects Flagship through local API when local key is configured", async () => {
@@ -1730,7 +1853,54 @@ test("vestaboard client detects Flagship through local API when local key is con
   assert.equal((requests[0]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
   assert.equal(requests[1]?.url, "http://local.example/message");
   assert.equal((requests[1]?.init.headers as Record<string, string>)["X-Vestaboard-Local-Api-Key"], "local-key");
-  assert.equal(requests[1]?.init.body, "[[1,2,3]]");
+  assert.equal(
+    requests[1]?.init.body,
+    "{\"characters\":[[1,2,3]],\"strategy\":\"row\",\"step_interval_ms\":2000,\"step_size\":1}"
+  );
+});
+
+test("local message transition env parser falls back after invalid values", () => {
+  const errors: string[] = [];
+  const parsed = localMessageTransitionOptionsFromEnv({
+    VESTABOARD_LOCAL_MESSAGE_STRATEGY: "spin",
+    VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS: "NaN",
+    VESTABOARD_LOCAL_MESSAGE_STEP_SIZE: "0"
+  }, {
+    error(message) {
+      errors.push(message);
+    }
+  });
+
+  assert.equal(parsed.hasError, true);
+  assert.deepEqual(parsed.options, {
+    strategy: "row",
+    stepIntervalMs: 2000,
+    stepSize: 1
+  });
+  assert.deepEqual(errors, [
+    "Invalid VESTABOARD_LOCAL_MESSAGE_STRATEGY 'spin'; using default 'row'.",
+    "Invalid VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS 'NaN'; using default '2000'.",
+    "Invalid VESTABOARD_LOCAL_MESSAGE_STEP_SIZE '0'; using default '1'."
+  ]);
+});
+
+test("local message transition env parser accepts configured values", () => {
+  const parsed = localMessageTransitionOptionsFromEnv({
+    VESTABOARD_LOCAL_MESSAGE_STRATEGY: "random",
+    VESTABOARD_LOCAL_MESSAGE_STEP_INTERVAL_MS: "1500",
+    VESTABOARD_LOCAL_MESSAGE_STEP_SIZE: "2"
+  }, {
+    error() {
+      throw new Error("unexpected error");
+    }
+  });
+
+  assert.equal(parsed.hasError, false);
+  assert.deepEqual(parsed.options, {
+    strategy: "random",
+    stepIntervalMs: 1500,
+    stepSize: 2
+  });
 });
 
 test("vestaboard client detects Note through local API without cloud token", async () => {
