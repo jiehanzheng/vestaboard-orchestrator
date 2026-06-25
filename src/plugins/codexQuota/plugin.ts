@@ -24,6 +24,7 @@ import type { CodexQuotaPluginOptions, Logger, QuotaPoller, QuotaSnapshot } from
 
 export class CodexQuotaPlugin implements Plugin {
   readonly id = "codex-quota";
+  readonly slug = "codex";
   private readonly quotaCache = new QuotaIngredientCache();
   private readonly statusMessages = new StatusMessageStack();
   private readonly quotaWindowHistory: QuotaWindowHistory;
