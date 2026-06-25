@@ -17,8 +17,39 @@ import {
 import { LastSentMessageCache, runForever, tick, type VestaboardMessage } from "../src/orchestrator.js";
 import { BLACK, BLUE, GREEN, ORANGE, RED, VIOLET, WHITE, YELLOW } from "../src/plugins/codexQuota/display/shared.js";
 import { StatusMessageStack } from "../src/plugins/codexQuota/pluginState.js";
+import { formatStartupMessage } from "../src/startupMessage.js";
 import { createVestaboardBoardResolver, boardPreferenceFromEnv } from "../src/vestaboardBoard.js";
 import { createVestaboardClient, detectVestaboardBoard } from "../src/vestaboard.js";
+
+test("renders startup message with date time and enabled plugin slugs for Vestaboard Note", () => {
+  const message = formatStartupMessage({
+    plugins: [
+      { id: "codex-quota", slug: "codex", getUpdate: async () => ({ priority: "normal", message: { text: "" } }) }
+    ],
+    now: new Date("2026-06-24T14:19:00-07:00"),
+    timeZone: "America/Los_Angeles",
+    board: "note",
+    transport: "local"
+  });
+
+  assert.equal(message.text, "VBMUX VIA LOCAL\n20260624 1419  \nCODEX          ");
+  assert.deepEqual(message.characters?.[0], [22, 2, 13, 21, 24, 0, 22, 9, 1, 0, 12, 15, 3, 1, 12]);
+});
+
+test("renders comma-separated startup plugin slugs without spaces", () => {
+  const message = formatStartupMessage({
+    plugins: [
+      { id: "codex-quota", slug: "codex", getUpdate: async () => ({ priority: "normal", message: { text: "" } }) },
+      { id: "weather", getUpdate: async () => ({ priority: "normal", message: { text: "" } }) }
+    ],
+    now: new Date("2026-06-24T21:19:00Z"),
+    board: "flagship",
+    transport: "cloud"
+  });
+
+  assert.equal(message.text.split("\n")[0], "VBMUX VIA CLOUD       ");
+  assert.equal(message.text.split("\n")[2], "CODEX,WEATHER         ");
+});
 
 test("uses aggregate rateLimits primary and secondary windows", () => {
   const snapshot = quotaFromRateLimits({

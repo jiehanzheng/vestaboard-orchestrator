@@ -1,6 +1,7 @@
 import { DemoSignalController } from "./demoSignals.js";
 import { createCodexQuotaPlugin } from "./plugins/codexQuota/index.js";
 import { LastSentMessageCache, runForever, tick } from "./orchestrator.js";
+import { sendStartupMessage } from "./startupMessage.js";
 import { boardPreferenceFromEnv, createVestaboardBoardResolver } from "./vestaboardBoard.js";
 import { createVestaboardClient } from "./vestaboard.js";
 
@@ -8,6 +9,8 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const once = args.includes("--once");
 const intervalMinutes = Number(process.env.ORCHESTRATOR_INTERVAL_MINUTES ?? "5");
+const startupPollDelayMs = 60_000;
+const vestaboardTransport = process.env.VESTABOARD_LOCAL_API_KEY ? "local" : "cloud";
 const sentMessageCache = new LastSentMessageCache();
 const demoPauseMinutes = Number(process.env.CODEX_QUOTA_DEMO_PAUSE_MINUTES ?? "5");
 const demoSignals = new DemoSignalController();
@@ -46,10 +49,10 @@ async function run(): Promise<void> {
 }
 
 if (once) {
-  run().catch(fail);
+  runOnceWithStartup().catch(fail);
 } else {
   demoSignals.install(console);
-  runWithDemoSignals().catch(fail);
+  runWithStartupAndDemoSignals().catch(fail);
 }
 
 function fail(error: unknown): void {
@@ -66,6 +69,27 @@ async function runWithDemoSignals(): Promise<void> {
       await demoSignals.sleep(delayMs);
     }
   });
+}
+
+async function runOnceWithStartup(): Promise<void> {
+  await startup();
+  await run();
+}
+
+async function runWithStartupAndDemoSignals(): Promise<void> {
+  await startup();
+  await runWithDemoSignals();
+}
+
+async function startup(): Promise<void> {
+  await sendStartupMessage({
+    plugins,
+    vestaboard,
+    board: () => boardResolver.resolve(),
+    transport: vestaboardTransport,
+    timeZone: process.env.CODEX_QUOTA_TIME_ZONE
+  });
+  await demoSignals.sleep(startupPollDelayMs);
 }
 
 function envFlag(value: string | undefined): boolean {

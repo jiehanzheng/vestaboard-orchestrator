@@ -10,6 +10,7 @@ export interface VestaboardMessage {
 
 export interface Plugin {
   id: string;
+  slug?: string;
   getUpdate(): Promise<PluginUpdate>;
 }
 
